@@ -1,0 +1,51 @@
+---
+// 親アカウントのログイン画面(Google認証)
+import { createSupabaseServerClient } from '../lib/supabase';
+
+const supabase = createSupabaseServerClient(Astro.request, Astro.cookies);
+const {
+  data: { user },
+} = await supabase.auth.getUser();
+
+if (user) {
+  return Astro.redirect('/children');
+}
+---
+
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>ログイン</title>
+  </head>
+  <body>
+    <main>
+      <h1>算数・図形ドリル</h1>
+      <p>保護者の方のGoogleアカウントでログインしてください。</p>
+      <button id="google-login">Googleでログイン</button>
+      <p id="error-message" role="alert"></p>
+    </main>
+
+    <script>
+      import { createSupabaseBrowserClient } from '../lib/supabase';
+
+      const supabase = createSupabaseBrowserClient();
+      const button = document.getElementById('google-login') as HTMLButtonElement;
+      const errorMessage = document.getElementById('error-message') as HTMLParagraphElement;
+
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: `${window.location.origin}/auth/callback`,
+          },
+        });
+        if (error) {
+          errorMessage.textContent = `ログインに失敗しました: ${error.message}`;
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

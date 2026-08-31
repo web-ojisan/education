@@ -1,0 +1,10 @@
+---
+// トップページはログイン状態に応じて振り分けるだけ
+import { createSupabaseServerClient } from '../lib/supabase';
+
+const supabase = createSupabaseServerClient(Astro.request, Astro.cookies);
+const { data } = await supabase.auth.getUser();
+const user = data.user;
+
+return Astro.redirect(user ? '/children' : '/login');
+---

@@ -1,0 +1,64 @@
+---
+// ドリル回答画面。問題データ(シード投入した固定データ)を取得し、
+// 実際の回答UIはReactアイランド(DrillIsland)に任せる
+import DrillIsland from '../components/DrillIsland';
+import { createSupabaseServerClient } from '../lib/supabase';
+
+const supabase = createSupabaseServerClient(Astro.request, Astro.cookies);
+const {
+  data: { user },
+} = await supabase.auth.getUser();
+
+if (!user) {
+  return Astro.redirect('/login');
+}
+
+const childId = Astro.cookies.get('active_child_id')?.value;
+if (!childId) {
+  return Astro.redirect('/children');
+}
+
+// RLSにより、この親の子でなければ0件になる(なりすまし防止)
+const { data: child } = await supabase.from('children').select('id, name').eq('id', childId).maybeSingle();
+if (!child) {
+  return Astro.redirect('/children');
+}
+
+const { data: problems, error } = await supabase
+  .from('problems')
+  .select('id, params, problem_templates(shape_type, title_ja)')
+  .order('created_at', { ascending: true });
+
+if (error) {
+  console.error('問題の取得に失敗しました', error);
+}
+
+type JoinedTemplate = { shape_type: string; title_ja: string };
+
+const drillProblems = (problems ?? []).map((row) => {
+  const template = row.problem_templates as unknown as JoinedTemplate | null;
+  return {
+    id: row.id as string,
+    shapeType: template?.shape_type ?? '',
+    title: template?.title_ja ?? '',
+    params: row.params,
+  };
+});
+---
+
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>ドリル</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <a href="/children">← 子どもを選びなおす</a>
+        <h1>{child.name}さんのドリル</h1>
+      </header>
+      <DrillIsland client:load childId={child.id} problems={drillProblems} />
+    </main>
+  </body>
+</html>

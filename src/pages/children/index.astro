@@ -1,0 +1,128 @@
+---
+// 子プロフィールの作成・一覧・切替画面
+import { createSupabaseServerClient } from '../../lib/supabase';
+
+const supabase = createSupabaseServerClient(Astro.request, Astro.cookies);
+const {
+  data: { user },
+} = await supabase.auth.getUser();
+
+if (!user) {
+  return Astro.redirect('/login');
+}
+
+// RLSにより、この親(auth.uid())配下の子どもしか返ってこない
+const { data: children, error } = await supabase
+  .from('children')
+  .select('id, name, grade')
+  .order('created_at', { ascending: true });
+
+if (error) {
+  console.error('子プロフィールの取得に失敗しました', error);
+}
+---
+
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>子どもを選ぶ</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>子どもを選ぶ</h1>
+        <button id="logout">ログアウト</button>
+      </header>
+
+      <section>
+        <h2>登録済みの子ども</h2>
+        {(!children || children.length === 0) && <p>まだ子どもが登録されていません。</p>}
+        <ul id="child-list">
+          {(children ?? []).map((child) => (
+            <li>
+              <button class="select-child" data-child-id={child.id}>
+                {child.name}(小{child.grade})
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section>
+        <h2>子どもを追加する</h2>
+        <form id="create-child-form">
+          <label>
+            名前
+            <input type="text" name="name" required maxlength="20" />
+          </label>
+          <label>
+            学年
+            <select name="grade" required>
+              <option value="1">小学1年</option>
+              <option value="2">小学2年</option>
+              <option value="3">小学3年</option>
+            </select>
+          </label>
+          <button type="submit">追加する</button>
+        </form>
+        <p id="form-error" role="alert"></p>
+      </section>
+    </main>
+
+    <script>
+      import { createSupabaseBrowserClient } from '../../lib/supabase';
+
+      const supabase = createSupabaseBrowserClient();
+
+      document.getElementById('logout')?.addEventListener('click', async () => {
+        await supabase.auth.signOut();
+        window.location.href = '/login';
+      });
+
+      document.querySelectorAll<HTMLButtonElement>('.select-child').forEach((button) => {
+        button.addEventListener('click', () => {
+          const childId = button.dataset.childId;
+          if (!childId) return;
+          // 「今どの子として操作しているか」はアプリ層(Cookie)で管理する。
+          // RLSが守るのは親の境界のみで、この選択自体はサーバーの認可判断には使わない。
+          document.cookie = `active_child_id=${childId}; path=/; max-age=${60 * 60 * 24 * 30}`;
+          window.location.href = '/drill';
+        });
+      });
+
+      const form = document.getElementById('create-child-form') as HTMLFormElement;
+      const formError = document.getElementById('form-error') as HTMLParagraphElement;
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        formError.textContent = '';
+
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) {
+          window.location.href = '/login';
+          return;
+        }
+
+        const formData = new FormData(form);
+        const name = String(formData.get('name') ?? '').trim();
+        const grade = Number(formData.get('grade'));
+
+        const { error } = await supabase.from('children').insert({
+          parent_id: user.id,
+          name,
+          grade,
+        });
+
+        if (error) {
+          formError.textContent = `追加に失敗しました: ${error.message}`;
+          return;
+        }
+
+        window.location.reload();
+      });
+    </script>
+  </body>
+</html>
