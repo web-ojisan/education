@@ -21,12 +21,21 @@ export type SequenceNextShapeParams = {
   visibleCount: number;
 };
 
+export type MultiplicationFactParams = {
+  /** 段(かけられる数) */
+  a: number;
+  /** かける数 */
+  b: number;
+};
+
 export type RenderedProblem = {
   svg: string;
   /** 表示用の正解(選択肢と比較するための文字列表現) */
   correctAnswer: string;
   /** 選択肢(表示用の文字列表現)。correctAnswerを必ず含む */
   choices: string[];
+  /** 回答の入力方式。未指定は choices(選択式)扱い。keypad はテンキーで入力させる */
+  inputMode?: 'choices' | 'keypad';
 };
 
 const CELL = 48;
@@ -101,6 +110,65 @@ export function renderSequenceNextShape(params: SequenceNextShapeParams): Render
   };
 }
 
+/** 九九の典型的な間違い(隣の段・かける数のずれ)から誤答の選択肢を決定的に作る */
+function buildMultiplicationChoices(a: number, b: number): number[] {
+  const correct = a * b;
+  const candidates = [
+    correct,
+    (a - 1) * b,
+    a * (b + 1),
+    (a + 1) * b,
+    a * (b - 1),
+    correct + 1,
+    correct + 2,
+    correct + 3,
+  ].filter((n) => n > 0);
+  const unique = Array.from(new Set(candidates)).slice(0, 4);
+  // 正解が常に同じ位置に来ないよう決定的に回転させる(buildNumberChoicesと同じ方式)
+  const rotate = correct % unique.length;
+  return [...unique.slice(rotate), ...unique.slice(0, rotate)];
+}
+
+/**
+ * 穴あき九九: 「a × □ = 積」の隠されたかける数(b)を答える。
+ * 順方向(renderMultiplicationFact)とは想起の方向が逆で、因数分解・√の分解への橋渡しになる。
+ * 穴は常にかける数(b)側に固定する(a×b と b×a は別ファクトとして両方あるため全方向カバーできる)
+ */
+export function renderMultiplicationMissingFactor(params: MultiplicationFactParams): RenderedProblem {
+  const { a, b } = params;
+
+  const width = 240;
+  const height = 96;
+  const svg = `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg"><text x="${width / 2}" y="${height / 2}" text-anchor="middle" dominant-baseline="central" font-size="40" font-family="sans-serif" fill="${FILL}">${a} × □ = ${a * b}</text></svg>`;
+
+  return {
+    svg,
+    correctAnswer: String(b),
+    // 答えは因数(1〜17)なので、近い数を並べる既存の選択肢生成で十分
+    choices: buildNumberChoices(b).map(String),
+    // 基礎帯(1〜9の段)は4択、拡張帯(11〜17の段)は思い出して打つテンキー入力
+    inputMode: a <= 9 ? 'choices' : 'keypad',
+  };
+}
+
+export function renderMultiplicationFact(params: MultiplicationFactParams): RenderedProblem {
+  const { a, b } = params;
+  const correct = a * b;
+
+  // 図形テンプレートと同じ経路で描画できるよう、式もSVGテキストとして生成する
+  const width = 240;
+  const height = 96;
+  const svg = `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg"><text x="${width / 2}" y="${height / 2}" text-anchor="middle" dominant-baseline="central" font-size="40" font-family="sans-serif" fill="${FILL}">${a} × ${b} = ?</text></svg>`;
+
+  return {
+    svg,
+    correctAnswer: String(correct),
+    choices: buildMultiplicationChoices(a, b).map(String),
+    // 基礎帯(1〜9の段)は4択、拡張帯(11〜17の段)は思い出して打つテンキー入力
+    inputMode: a <= 9 ? 'choices' : 'keypad',
+  };
+}
+
 export type ProblemRow = {
   id: string;
   shape_type: string;
@@ -113,6 +181,10 @@ export function renderProblem(row: ProblemRow): RenderedProblem {
       return renderCountGridShapes(row.params as CountGridShapesParams);
     case 'sequence_next_shape':
       return renderSequenceNextShape(row.params as SequenceNextShapeParams);
+    case 'multiplication_fact':
+      return renderMultiplicationFact(row.params as MultiplicationFactParams);
+    case 'multiplication_missing_factor':
+      return renderMultiplicationMissingFactor(row.params as MultiplicationFactParams);
     default:
       throw new Error(`未知のshape_typeです: ${row.shape_type}`);
   }

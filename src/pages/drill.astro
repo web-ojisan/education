@@ -24,9 +24,12 @@ if (!child) {
   return Astro.redirect('/children');
 }
 
+// 九九(順方向・穴あき)は専用ページ(/multiplication)で出題するため、ここでは除外する
 const { data: problems, error } = await supabase
   .from('problems')
-  .select('id, params, problem_templates(shape_type, title_ja)')
+  .select('id, params, problem_templates!inner(shape_type, title_ja)')
+  .neq('problem_templates.shape_type', 'multiplication_fact')
+  .neq('problem_templates.shape_type', 'multiplication_missing_factor')
   .order('created_at', { ascending: true });
 
 if (error) {
@@ -55,8 +58,8 @@ const drillProblems = (problems ?? []).map((row) => {
   <body>
     <main>
       <header>
-        <a href="/children">← 子どもを選びなおす</a>
         <h1>{child.name}さんのドリル</h1>
+        <p><a href="/multiplication">九九ドリルへ</a></p>
       </header>
       <DrillIsland client:load childId={child.id} problems={drillProblems} />
     </main>

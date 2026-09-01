@@ -41,8 +41,12 @@ if (error) {
         <ul id="child-list">
           {(children ?? []).map((child) => (
             <li>
-              <button class="select-child" data-child-id={child.id}>
-                {child.name}(小{child.grade})
+              <span>{child.name}(小{child.grade})</span>
+              <button class="select-child" data-child-id={child.id} data-dest="/drill">
+                ずけいドリル
+              </button>
+              <button class="select-child" data-child-id={child.id} data-dest="/multiplication">
+                九九ドリル
               </button>
             </li>
           ))}
@@ -87,7 +91,7 @@ if (error) {
           // 「今どの子として操作しているか」はアプリ層(Cookie)で管理する。
           // RLSが守るのは親の境界のみで、この選択自体はサーバーの認可判断には使わない。
           document.cookie = `active_child_id=${childId}; path=/; max-age=${60 * 60 * 24 * 30}`;
-          window.location.href = '/drill';
+          window.location.href = button.dataset.dest ?? '/drill';
         });
       });
 

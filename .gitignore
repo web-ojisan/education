@@ -1,5 +1,7 @@
 # build output
 dist/
+# vite-plugin-pwaが開発時(astro dev)に生成するService Worker一式
+dev-dist/
 # generated types
 .astro/
 

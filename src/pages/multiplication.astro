@@ -1,0 +1,242 @@
+---
+// 九九(かけ算)暗記ドリル画面。ゴールは即答できること。
+// - おもてモード(順方向): 「a × b = ?」 / うらモード(穴あき): 「a × □ = 積」で隠されたかける数を答える。
+//   うらモードは「同じ帯の順方向を全て習得したら解放」(?mode=ura。未解放なら黙っておもてに戻す)。
+// - 基礎帯: 1〜9の段×1〜9(4択回答)。拡張帯: 11〜17の段×1〜17、×10除外(テンキー回答)。
+// - 習熟は multiplication_mastery ビュー(5連続・閾値内正答で習得、一度達成で維持)から取得し、
+//   九九表のマスの色で見せる。回答時間や順位は子どもには一切表示しない(低学年向け表示ポリシー)。
+import DrillIsland from '../components/DrillIsland';
+import { createSupabaseServerClient } from '../lib/supabase';
+
+const supabase = createSupabaseServerClient(Astro.request, Astro.cookies);
+const {
+  data: { user },
+} = await supabase.auth.getUser();
+
+if (!user) {
+  return Astro.redirect('/login');
+}
+
+const childId = Astro.cookies.get('active_child_id')?.value;
+if (!childId) {
+  return Astro.redirect('/children');
+}
+
+// RLSにより、この親の子でなければ0件になる(なりすまし防止)
+const { data: child } = await supabase.from('children').select('id, name').eq('id', childId).maybeSingle();
+if (!child) {
+  return Astro.redirect('/children');
+}
+
+const { data: problems, error: problemsError } = await supabase
+  .from('problems')
+  .select('id, params, problem_templates!inner(shape_type)')
+  .in('problem_templates.shape_type', ['multiplication_fact', 'multiplication_missing_factor']);
+
+if (problemsError) {
+  console.error('九九の問題取得に失敗しました', problemsError);
+}
+
+const { data: masteryRows, error: masteryError } = await supabase
+  .from('multiplication_mastery')
+  .select('problem_id, mastered, attempts')
+  .eq('child_id', child.id);
+
+if (masteryError) {
+  console.error('九九の習熟状況の取得に失敗しました', masteryError);
+}
+
+type Mode = 'forward' | 'missing_factor';
+type Fact = {
+  id: string;
+  a: number;
+  b: number;
+  shapeType: string;
+  mode: Mode;
+  mastered: boolean;
+  attempts: number;
+};
+
+const masteryByProblem = new Map(
+  (masteryRows ?? []).map((row) => [row.problem_id as string, row as { mastered: boolean; attempts: number }]),
+);
+
+const facts: Fact[] = (problems ?? []).map((row) => {
+  const params = row.params as { a: number; b: number };
+  const template = row.problem_templates as unknown as { shape_type: string };
+  const mastery = masteryByProblem.get(row.id as string);
+  return {
+    id: row.id as string,
+    a: params.a,
+    b: params.b,
+    shapeType: template.shape_type,
+    mode: template.shape_type === 'multiplication_fact' ? 'forward' : 'missing_factor',
+    mastered: mastery?.mastered ?? false,
+    attempts: mastery?.attempts ?? 0,
+  };
+});
+
+const pick = (mode: Mode, band: 'basic' | 'extension') =>
+  facts.filter((fact) => fact.mode === mode && (band === 'basic' ? fact.a <= 9 : fact.a >= 11));
+const allMastered = (list: Fact[]) => list.length > 0 && list.every((fact) => fact.mastered);
+
+const forwardBasic = pick('forward', 'basic');
+const forwardExtension = pick('forward', 'extension');
+
+// 帯・モードの解放判定(習得は不可逆なので解放も後戻りしない):
+// - 順方向の拡張帯とうらモードの基礎帯: 順方向の基礎81を全て習得したら
+// - うらモードの拡張帯: 順方向の拡張帯を全て習得したら
+const forwardExtensionUnlocked = allMastered(forwardBasic);
+const uraUnlocked = allMastered(forwardBasic);
+const uraExtensionUnlocked = allMastered(forwardExtension);
+
+const mode: Mode = Astro.url.searchParams.get('mode') === 'ura' && uraUnlocked ? 'missing_factor' : 'forward';
+
+// 表示・出題対象は現在モードのファクト
+const basicFacts = pick(mode, 'basic');
+const extensionFacts = pick(mode, 'extension');
+const extensionVisible = mode === 'forward' ? forwardExtensionUnlocked : uraExtensionUnlocked;
+
+// 5問1セットの出題選択(決定的なロジック。乱数は使わない):
+// 現在帯の未習得ファクトを試行回数の少ない順に優先し、同モードの習得済みから復習を1問混ぜる
+const byAttemptsThenFact = (x: Fact, y: Fact) => x.attempts - y.attempts || x.a - y.a || x.b - y.b;
+const activeFacts =
+  mode === 'forward'
+    ? forwardExtensionUnlocked
+      ? extensionFacts
+      : basicFacts
+    : uraExtensionUnlocked && allMastered(basicFacts)
+      ? extensionFacts
+      : basicFacts;
+const unmastered = activeFacts.filter((fact) => !fact.mastered).sort(byAttemptsThenFact);
+const masteredPool = facts.filter((fact) => fact.mode === mode && fact.mastered).sort(byAttemptsThenFact);
+
+const SET_SIZE = 5;
+const selectedFacts = unmastered.slice(0, masteredPool.length > 0 ? SET_SIZE - 1 : SET_SIZE);
+for (const fact of masteredPool) {
+  if (selectedFacts.length >= SET_SIZE) break;
+  selectedFacts.push(fact);
+}
+
+const MODE_TITLES: Record<Mode, string> = { forward: 'かけ算', missing_factor: 'かけ算(あなあき)' };
+
+const drillProblems = selectedFacts.map((fact) => ({
+  id: fact.id,
+  shapeType: fact.shapeType,
+  title: MODE_TITLES[mode],
+  params: { a: fact.a, b: fact.b },
+}));
+
+// 九九表(習熟マップ)用のデータ。現在モードの習熟だけを表示する
+const masteredSet = new Set(
+  facts.filter((fact) => fact.mode === mode && fact.mastered).map((fact) => `${fact.a}:${fact.b}`),
+);
+const basicMasteredCount = basicFacts.filter((fact) => fact.mastered).length;
+const extensionMasteredCount = extensionFacts.filter((fact) => fact.mastered).length;
+const basicRows = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+const basicCols = basicRows;
+const extensionRows = [11, 12, 13, 14, 15, 16, 17];
+// かける数は1〜17(×10は自明のため除外)
+const extensionCols = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17];
+---
+
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>九九ドリル</title>
+    <style>
+      table.kuku {
+        border-collapse: collapse;
+      }
+      table.kuku th,
+      table.kuku td {
+        border: 1px solid #94a3b8;
+        min-width: 2em;
+        padding: 0.2em 0.4em;
+        text-align: center;
+      }
+      table.kuku td.mastered {
+        background: #fde047;
+      }
+      .kuku-wrap {
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>{child.name}さんの九九ドリル{mode === 'missing_factor' && '(うら・あなあき)'}</h1>
+        <p><a href="/drill">ずけいドリルへ</a></p>
+        {mode === 'forward' && uraUnlocked && <p><a href="/multiplication?mode=ura">うらモード(あなあき)へ</a></p>}
+        {mode === 'missing_factor' && <p><a href="/multiplication">おもてモードへ</a></p>}
+      </header>
+
+      <DrillIsland client:load childId={child.id} problems={drillProblems} />
+
+      <section>
+        <h2>九九マスターひょう{mode === 'missing_factor' && '(うら)'}</h2>
+        <p>マスターしたかず: {basicMasteredCount} / {basicFacts.length}</p>
+        <div class="kuku-wrap">
+          <table class="kuku">
+            <thead>
+              <tr>
+                <th>×</th>
+                {basicCols.map((b) => <th>{b}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {basicRows.map((a) => (
+                <tr>
+                  <th>{a}</th>
+                  {basicCols.map((b) => (
+                    <td class:list={[{ mastered: masteredSet.has(`${a}:${b}`) }]}>{a * b}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {mode === 'forward' && !uraUnlocked && (
+          <p>九九をぜんぶマスターすると「うらモード(あなあき)」がひらくよ!</p>
+        )}
+      </section>
+
+      <section>
+        <h2>11〜17のだん{mode === 'missing_factor' && '(うら)'}</h2>
+        {
+          extensionVisible ? (
+            <>
+              <p>マスターしたかず: {extensionMasteredCount} / {extensionFacts.length}</p>
+              <div class="kuku-wrap">
+                <table class="kuku">
+                  <thead>
+                    <tr>
+                      <th>×</th>
+                      {extensionCols.map((b) => <th>{b}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {extensionRows.map((a) => (
+                      <tr>
+                        <th>{a}</th>
+                        {extensionCols.map((b) => (
+                          <td class:list={[{ mastered: masteredSet.has(`${a}:${b}`) }]}>{a * b}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : mode === 'forward' ? (
+            <p>九九(1〜9のだん)をぜんぶマスターすると、11〜17のだんがひらくよ!</p>
+          ) : (
+            <p>おもての11〜17のだんをぜんぶマスターすると、うらでもひらくよ!</p>
+          )
+        }
+      </section>
+    </main>
+  </body>
+</html>
