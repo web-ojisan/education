@@ -1,0 +1,32 @@
+/* デフォルトスキンのデザイントークン(スキン規約)。
+   色・フォント・角丸などの見た目はすべてここのCSS変数で定義し、
+   ページ側は必ず var(--...) 経由で参照する(直接色コード禁止)。
+   将来のIPコラボでは、このファイルと images/ sounds/ を差し替えるだけでスキンが切り替わる。 */
+:root {
+  /* ベース: あたたかいクリームとやわらかい焦げ茶 */
+  --color-bg: #fff8f0;
+  --color-surface: #ffffff;
+  --color-text: #5d4a3c;
+  --color-text-soft: #93826f;
+
+  /* アクセント: コーラルを主役に、やさしい若草・水色・レモン */
+  --color-primary: #ff8a65;
+  --color-primary-soft: #ffe3d3;
+  --color-positive: #81c784;
+  --color-info: #64b5f6;
+  --color-accent: #fde047; /* 九九表の習得済みマスと同系 */
+
+  /* 形とフォント */
+  --font-family: 'Zen Maru Gothic', 'Hiragino Maru Gothic ProN', 'BIZ UDGothic', sans-serif;
+  --radius: 16px;
+  --shadow-card: 0 4px 16px rgba(93, 74, 60, 0.08);
+
+  /* チャート */
+  --chart-line: #ff8a65;
+  --chart-fill: #ffe3d3;
+  --chart-line-2: #64b5f6;
+  --chart-fill-2: #dceffd;
+  --chart-bar: #ffb74d;
+  --chart-grid: #f0e4d7;
+  --chart-label: #93826f;
+}
