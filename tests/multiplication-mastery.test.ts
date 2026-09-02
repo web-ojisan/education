@@ -61,11 +61,18 @@ describe('multiplication_mastery: 九九の習熟ビュー', () => {
   let fact3x4: string; // 基礎帯(順方向): 途中に遅い正答を挟み、未習得のままにする
   let fact13x7: string; // 拡張帯(順方向): 4秒回答(基礎帯なら閾値超え)でも習得できることを確認する
   let missing3x4: string; // 基礎帯(穴あき): 順方向(3×4)が未習得でも独立に習得できることを確認する
+  let fact2x3: string; // 基礎帯(順方向): ゴーストレースのログだけでは習熟ビューに現れないことを確認する
   let missingProblems: { id: string; params: unknown; base_problem_id: string | null; variation_distance: number }[];
 
   // 「offsetSec秒後に開始し、durationSec秒かけて回答した」ログを作る
   const baseMs = Date.now() - 60 * 60 * 1000; // 1時間前を起点にする
-  function logEntry(problemId: string, offsetSec: number, durationSec: number, isCorrect = true) {
+  function logEntry(
+    problemId: string,
+    offsetSec: number,
+    durationSec: number,
+    isCorrect = true,
+    context: 'drill' | 'ghost_race' = 'drill',
+  ) {
     const started = new Date(baseMs + offsetSec * 1000);
     const completed = new Date(started.getTime() + durationSec * 1000);
     return {
@@ -74,7 +81,7 @@ describe('multiplication_mastery: 九九の習熟ビュー', () => {
       is_correct: isCorrect,
       started_at: started.toISOString(),
       completed_at: completed.toISOString(),
-      context: 'drill' as const,
+      context,
     };
   }
 
@@ -111,6 +118,7 @@ describe('multiplication_mastery: 九九の習熟ビュー', () => {
     fact7x8 = findFact('multiplication_fact', 7, 8);
     fact3x4 = findFact('multiplication_fact', 3, 4);
     fact13x7 = findFact('multiplication_fact', 13, 7);
+    fact2x3 = findFact('multiplication_fact', 2, 3);
     missing3x4 = findFact('multiplication_missing_factor', 3, 4);
     missingProblems = mulProblems.filter((p) => {
       const template = p.problem_templates as unknown as { shape_type: string };
@@ -121,12 +129,16 @@ describe('multiplication_mastery: 九九の習熟ビュー', () => {
     // 3×4: 3問目だけ4秒かかった正答(閾値超え)→ 連続が途切れて未習得
     // 13×7: 5連続正答・各4秒(拡張帯閾値5秒以内)→ 習得
     // 穴あき3×4: 5連続正答・各2秒 → 習得(順方向の3×4が未習得でも独立に判定される)
+    // ゴーストレース走(context='ghost_race')は習熟判定の対象外:
+    //   2×3は速い正答5連続でもビューに現れず、7×8のattemptsにも数えられない
     const { error: logError } = await parentA.client.from('answer_logs').insert([
       ...[0, 10, 20, 30, 40].map((offset) => logEntry(fact7x8, offset, 2)),
       ...[0, 10, 30, 40].map((offset) => logEntry(fact3x4, offset, 2)),
       logEntry(fact3x4, 20, 4),
       ...[0, 10, 20, 30, 40].map((offset) => logEntry(fact13x7, offset, 4)),
       ...[0, 10, 20, 30, 40].map((offset) => logEntry(missing3x4, offset, 2)),
+      ...[0, 10, 20, 30, 40].map((offset) => logEntry(fact2x3, offset, 2, true, 'ghost_race')),
+      ...[50, 60, 70].map((offset) => logEntry(fact7x8, offset, 2, true, 'ghost_race')),
     ]);
     if (logError) {
       throw new Error(`前提データ(回答ログ)の作成に失敗しました: ${logError.message}`);
@@ -195,6 +207,20 @@ describe('multiplication_mastery: 九九の習熟ビュー', () => {
     // 全193ファクトが穴あき化され、すべて順方向のbaseを持つ
     expect(missingProblems.length).toBe(193);
     expect(missingProblems.every((p) => p.base_problem_id !== null && p.variation_distance === 3)).toBe(true);
+  });
+
+  it('ゴーストレース(context=ghost_race)のログは習熟判定の対象にならない', async () => {
+    // 2×3はghost_raceの速い正答5連続だけ → ビューに行が現れない
+    const { data, error } = await parentA.client
+      .from('multiplication_mastery')
+      .select('problem_id')
+      .eq('child_id', childOfA.id)
+      .eq('problem_id', fact2x3)
+      .maybeSingle();
+    expect(error).toBeNull();
+    expect(data).toBeNull();
+    // 7×8のattemptsが5のままであること(ghost_raceの3件が数えられていない)は
+    // 冒頭のテスト(attempts: 5)で担保される
   });
 
   it('親Bは親Aの子の習熟データを読み取れない(RLS攻撃テスト)', async () => {

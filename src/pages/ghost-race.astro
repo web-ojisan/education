@@ -1,0 +1,134 @@
+---
+// ゴーストレース画面。過去の自分や家族(兄弟姉妹)の5問1セットの回答記録をゴーストとして
+// 再生し、並走レースする。習得済みファクトの復習専用モード(無料機能)。
+// - レース可能なのは「現在の子が全5問を習得済み」のセットだけ。
+// - RLSは親の境界なので、answer_logsを普通に読むだけで家族全員分が候補になる(家庭内対戦)。
+// - ゴーストレースの回答は context='ghost_race' で記録し、習熟判定(drillのみ集計)には影響しない。
+// - 秒数・タイムは数値表示しない(低学年向け表示ポリシー)。日付とレーン進捗のみ見せる。
+import GhostRaceIsland from '../components/GhostRaceIsland';
+import { buildGhostSessions, type GhostLogRow } from '../lib/ghost-race';
+import { createSupabaseServerClient } from '../lib/supabase';
+
+const supabase = createSupabaseServerClient(Astro.request, Astro.cookies);
+const {
+  data: { user },
+} = await supabase.auth.getUser();
+
+if (!user) {
+  return Astro.redirect('/login');
+}
+
+const childId = Astro.cookies.get('active_child_id')?.value;
+if (!childId) {
+  return Astro.redirect('/children');
+}
+
+// RLSにより、この親の子でなければ0件になる(なりすまし防止)
+const { data: child } = await supabase.from('children').select('id, name').eq('id', childId).maybeSingle();
+if (!child) {
+  return Astro.redirect('/children');
+}
+
+// ゴーストの名前表示用(RLSで自分の家族のみ返る)
+const { data: family } = await supabase.from('children').select('id, name');
+const childNames = new Map((family ?? []).map((row) => [row.id as string, row.name as string]));
+
+// 復習専用モード: 現在の子が習得済みのファクトだけレース対象にする
+const { data: masteryRows, error: masteryError } = await supabase
+  .from('multiplication_mastery')
+  .select('problem_id')
+  .eq('child_id', child.id)
+  .eq('mastered', true);
+
+if (masteryError) {
+  console.error('習熟状況の取得に失敗しました', masteryError);
+}
+
+const masteredIds = new Set((masteryRows ?? []).map((row) => row.problem_id as string));
+
+// 家族全員の九九セット(session_id付きの回答ログ)を取得
+const { data: logRows, error: logsError } = await supabase
+  .from('answer_logs')
+  .select(
+    'session_id, child_id, problem_id, started_at, completed_at, problems!inner(params, problem_templates!inner(shape_type))',
+  )
+  .not('session_id', 'is', null)
+  .in('problems.problem_templates.shape_type', ['multiplication_fact', 'multiplication_missing_factor']);
+
+if (logsError) {
+  console.error('回答ログの取得に失敗しました', logsError);
+}
+
+const ghostRows: GhostLogRow[] = (logRows ?? []).map((row) => {
+  const problem = row.problems as unknown as { params: unknown; problem_templates: { shape_type: string } };
+  return {
+    session_id: row.session_id as string,
+    child_id: row.child_id as string,
+    problem_id: row.problem_id as string,
+    started_at: row.started_at as string,
+    completed_at: row.completed_at as string,
+    shape_type: problem.problem_templates.shape_type,
+    params: problem.params,
+  };
+});
+
+const sessions = buildGhostSessions(ghostRows)
+  .filter((session) => session.problems.every((problem) => masteredIds.has(problem.id)))
+  .slice(0, 20);
+
+const selectedSessionId = Astro.url.searchParams.get('session');
+const selected = sessions.find((session) => session.sessionId === selectedSessionId) ?? null;
+
+const ghostLabel = (session: (typeof sessions)[number]) => {
+  const name = session.childId === child.id ? 'じぶん' : (childNames.get(session.childId) ?? '???');
+  const mode = session.problems[0].shapeType === 'multiplication_fact' ? 'おもて' : 'うら';
+  const date = new Date(session.startedAt).toLocaleDateString('ja-JP');
+  return `${name}の${mode}きろく(${date})`;
+};
+---
+
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>ゴーストレース</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>{child.name}さんのゴーストレース</h1>
+        <p><a href="/multiplication">九九ドリルへ</a></p>
+      </header>
+
+      {
+        selected ? (
+          <section>
+            <h2>{ghostLabel(selected)}とレース!</h2>
+            <GhostRaceIsland
+              client:load
+              childId={child.id}
+              ghostName={selected.childId === child.id ? 'じぶん' : (childNames.get(selected.childId) ?? '???')}
+              problems={selected.problems}
+              ghostOffsetsMs={selected.offsetsMs}
+            />
+          </section>
+        ) : (
+          <section>
+            <h2>ゴーストをえらぶ</h2>
+            {sessions.length === 0 ? (
+              <p>まだレースできるきろくがないよ。九九をマスターしてドリルをがんばろう!</p>
+            ) : (
+              <ul>
+                {sessions.map((session) => (
+                  <li>
+                    <a href={`/ghost-race?session=${session.sessionId}`}>{ghostLabel(session)}</a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )
+      }
+    </main>
+  </body>
+</html>

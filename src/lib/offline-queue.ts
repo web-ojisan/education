@@ -12,8 +12,8 @@ export type QueuedAnswerLog = {
   is_correct: boolean;
   started_at: string;
   completed_at: string;
-  context: 'drill';
-  /** 5問1セット等のまとまりを示すID。将来のゴーストレース再生用に記録だけしておく */
+  context: 'drill' | 'ghost_race';
+  /** 5問1セット等のまとまりを示すID(ゴーストレースの再生単位にもなる) */
   session_id: string | null;
 };
 
