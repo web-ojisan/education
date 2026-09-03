@@ -1,0 +1,218 @@
+---
+// LP用の保護者サマリ・サンプル画面(静的ページ)。
+// 認証・DBアクセスなしで、決定的な式から生成したダミーデータを本番と同じ
+// 集計関数(summary.ts)・チャート生成(summary-charts.ts)・表示(SummaryView.astro)に通す。
+// 本番のサマリ画面と見た目が自動的に一致し、UIを改善するとこのサンプルにも反映される。
+import SummaryView from '../components/SummaryView.astro';
+import {
+  buildDailyActivity,
+  buildMasteryCurve,
+  buildSpeedTrend,
+  buildWeakFacts,
+  buildWeeklyHighlights,
+  type SummaryLogRow,
+} from '../lib/summary';
+import { buildBarChart, buildLineChart } from '../lib/summary-charts';
+
+// ビルド時に静的生成する(日付はデプロイ時点基準。デプロイごとに更新される)
+export const prerender = true;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const today = new Date();
+
+// ---- マスター履歴: 75日かけて58個。最近ほどペースが上がる形(きれいな成長曲線になる) ----
+const TOTAL_MASTERED = 58;
+const masteredAts: string[] = [];
+for (let i = 1; i <= TOTAL_MASTERED; i++) {
+  const daysAgo = Math.round(75 * Math.pow(1 - i / TOTAL_MASTERED, 1.35));
+  masteredAts.push(new Date(today.getTime() - daysAgo * DAY_MS - (i % 5) * 3600_000).toISOString());
+}
+
+// ---- 回答ログ: 直近56日。ほどよい休みを挟みつつ、回答時間が少しずつ速くなる ----
+const GENERIC_FACTS = [
+  { a: 2, b: 3 }, { a: 3, b: 6 }, { a: 4, b: 7 }, { a: 5, b: 5 }, { a: 6, b: 4 }, { a: 7, b: 3 },
+  { a: 8, b: 2 }, { a: 9, b: 6 }, { a: 3, b: 8 }, { a: 5, b: 9 }, { a: 6, b: 6 }, { a: 8, b: 9 },
+];
+const logs: SummaryLogRow[] = [];
+const masteredIds = new Set<string>();
+
+function pushLog(daysAgo: number, minuteInDay: number, problemId: string, params: { a: number; b: number },
+  durationSec: number, isCorrect: boolean, shapeType = 'multiplication_fact') {
+  const completed = new Date(today.getTime() - daysAgo * DAY_MS - (600 - minuteInDay) * 60_000);
+  logs.push({
+    problem_id: problemId,
+    is_correct: isCorrect,
+    started_at: new Date(completed.getTime() - durationSec * 1000).toISOString(),
+    completed_at: completed.toISOString(),
+    shape_type: shapeType,
+    params,
+  });
+}
+
+for (let d = 0; d < 56; d++) {
+  // 9日に1回のおやすみと、少し長めのおでかけ(33〜34日前)
+  if (d % 9 === 6 || d === 33 || d === 34) continue;
+  const answers = 6 + ((d * 5) % 12);
+  const baseSeconds = 2.1 + 2.9 * (d / 56); // 昔ほど遅く、最近ほど速い
+  for (let j = 0; j < answers; j++) {
+    const factIndex = (d + j) % GENERIC_FACTS.length;
+    const problemId = `demo-fact-${factIndex}`;
+    masteredIds.add(problemId); // 一般ログはつまずき抽出の対象外にしておく
+    const wiggle = (((d * 7 + j * 3) % 10) / 10) * 1.2 - 0.6;
+    const duration = Math.max(0.8, Math.round((baseSeconds + wiggle) * 10) / 10);
+    const isCorrect = d > 28 ? j % 9 !== 4 : j % 15 !== 7; // 昔は少し誤答が多め
+    pushLog(d, j * 3, problemId, GENERIC_FACTS[factIndex], duration, isCorrect);
+  }
+}
+
+// ---- つまずきポイント用: 直近数日の「あるあるな苦手」をつくる ----
+// 7×8(定番の壁): 誤答2回+遅答2回
+[
+  { day: 1, dur: 2.4, ok: false }, { day: 1, dur: 4.2, ok: true }, { day: 2, dur: 2.1, ok: false },
+  { day: 2, dur: 4.8, ok: true }, { day: 3, dur: 2.6, ok: true }, { day: 3, dur: 2.9, ok: true },
+].forEach((t, i) => pushLog(t.day, 300 + i, 'demo-weak-7x8', { a: 7, b: 8 }, t.dur, t.ok));
+// 6×7: 誤答1回+遅答2回
+[
+  { day: 1, dur: 3.9, ok: true }, { day: 2, dur: 2.2, ok: false }, { day: 3, dur: 4.4, ok: true },
+  { day: 4, dur: 2.7, ok: true },
+].forEach((t, i) => pushLog(t.day, 320 + i, 'demo-weak-6x7', { a: 6, b: 7 }, t.dur, t.ok));
+// 8×6: 誤答1回
+[
+  { day: 2, dur: 2.5, ok: false }, { day: 3, dur: 2.8, ok: true }, { day: 4, dur: 2.3, ok: true },
+].forEach((t, i) => pushLog(t.day, 340 + i, 'demo-weak-8x6', { a: 8, b: 6 }, t.dur, t.ok));
+// あなあきの 9×□=72: 誤答1回
+[
+  { day: 1, dur: 3.1, ok: false }, { day: 2, dur: 2.9, ok: true }, { day: 4, dur: 2.6, ok: true },
+].forEach((t, i) =>
+  pushLog(t.day, 360 + i, 'demo-weak-missing-9x8', { a: 9, b: 8 }, t.dur, t.ok, 'multiplication_missing_factor'),
+);
+
+// ---- 本番とまったく同じ集計・チャート生成に通す ----
+const curve = buildMasteryCurve(masteredAts, today);
+const speed = buildSpeedTrend(logs, today);
+const activity = buildDailyActivity(logs, today);
+const weakFacts = buildWeakFacts(logs, masteredIds);
+const highlights = buildWeeklyHighlights(masteredAts, logs, today);
+
+const shortDate = (key: string) => `${Number(key.slice(5, 7))}/${Number(key.slice(8, 10))}`;
+const curveChart = buildLineChart(curve.map((p) => ({ label: shortDate(p.date), value: p.value })), 'こ');
+const speedChart = buildLineChart(speed.map((p) => ({ label: p.label, value: p.avgSeconds })), '秒');
+const activityChart = buildBarChart(activity.days.map((day) => ({ label: shortDate(day.date), value: day.count })));
+
+const totalAnswers28d = activity.days.reduce((sum, day) => sum + day.count, 0);
+const latestSpeed = [...speed].reverse().find((p) => p.avgSeconds !== null)?.avgSeconds ?? null;
+---
+
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>保護者サマリのサンプル | さんすう図形ドリル</title>
+    <meta name="description" content="お子さまの九九の成長がひと目でわかる保護者サマリのサンプル画面です(ダミーデータ)。" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/skins/default/tokens.css" />
+    <style>
+      body {
+        margin: 0;
+        background: var(--color-bg);
+        color: var(--color-text);
+        font-family: var(--font-family);
+        line-height: 1.7;
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 1.5rem 1rem 3rem;
+      }
+      .hero {
+        text-align: center;
+        padding: 1.5rem 0 1rem;
+      }
+      .hero h1 {
+        font-size: 1.6rem;
+        margin: 0 0 0.5rem;
+      }
+      .hero p {
+        color: var(--color-text-soft);
+        margin: 0;
+      }
+      .demo-banner {
+        text-align: center;
+        background: var(--color-accent);
+        border-radius: 999px;
+        padding: 0.4rem 1rem;
+        font-size: 0.85rem;
+        font-weight: 700;
+        margin: 1.25rem auto;
+        width: fit-content;
+      }
+      .demo-child {
+        font-size: 1.2rem;
+        font-weight: 700;
+        margin: 0 0 1rem;
+      }
+      .cta {
+        text-align: center;
+        background: var(--color-surface);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow-card);
+        padding: 1.5rem 1.25rem;
+        margin-top: 2rem;
+      }
+      .cta a.button {
+        display: inline-block;
+        background: var(--color-primary);
+        color: var(--color-surface);
+        font-weight: 700;
+        text-decoration: none;
+        border-radius: 999px;
+        padding: 0.75rem 2rem;
+        margin: 0.75rem 0 0.5rem;
+      }
+      .cta .fineprint {
+        color: var(--color-text-soft);
+        font-size: 0.8rem;
+        margin: 0.25rem 0 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <h1>お子さまの「できた!」が、目に見える。</h1>
+        <p>
+          九九の暗記を「5回連続・すばやく正解」というほんものの習得で記録。
+          保護者サマリで、成長のようすがひと目でわかります。
+        </p>
+      </section>
+
+      <p class="demo-banner">▼ こちらはダミーデータによるサンプル画面です</p>
+
+      <p class="demo-child">ひなたさん(小2)の学習サマリ</p>
+
+      <SummaryView
+        curveChart={curveChart}
+        speedChart={speedChart}
+        activityChart={activityChart}
+        weakFacts={weakFacts}
+        totalMastered={TOTAL_MASTERED}
+        masteredThisWeek={highlights.masteredThisWeek}
+        latestSpeed={latestSpeed}
+        totalAnswers28d={totalAnswers28d}
+        streak={activity.streak}
+        hasAnyData={true}
+      />
+
+      <section class="cta">
+        <p><strong>ドリルもゴーストレースも、ずっと無料。</strong></p>
+        <a class="button" href="/login">Googleでログインしてはじめる</a>
+        <p class="fineprint">保護者サマリは将来、月額300円の有料機能として提供予定です。</p>
+      </section>
+    </main>
+  </body>
+</html>

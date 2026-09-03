@@ -2,9 +2,9 @@
 // 親向け学習サマリ画面(将来の課金対象。今回は課金ゲートなし)。
 // - 「時間・順位を子どもに見せない」は低学年向け表示ポリシーのため、親向けのこの画面では
 //   回答時間を積極的に見せて、成長の根拠が伝わるようにする。
-// - チャートはライブラリを使わず、src/lib/summary-charts.ts のモデルからJSXでSVGを組む
-//   (set:html禁止の規約のため、文字列HTMLの注入はしない)。
+// - カード表示は SummaryView.astro(/summary-demo と共用)。ここはデータ取得と集計のみ。
 // - 色・フォントは /skins/default/tokens.css のCSS変数のみを参照する(スキン規約)。
+import SummaryView from '../components/SummaryView.astro';
 import {
   buildDailyActivity,
   buildMasteryCurve,
@@ -153,97 +153,6 @@ const hasAnyData = logs.length > 0;
         color: var(--color-surface);
         font-weight: 700;
       }
-      .card {
-        background: var(--color-surface);
-        border-radius: var(--radius);
-        box-shadow: var(--shadow-card);
-        padding: 1.25rem 1.25rem 1rem;
-        margin-bottom: 1.25rem;
-      }
-      .card h2 {
-        font-size: 1.05rem;
-        margin: 0 0 0.25rem;
-      }
-      .headline {
-        font-size: 1.6rem;
-        font-weight: 700;
-        color: var(--color-primary);
-        margin: 0.25rem 0;
-      }
-      .headline small {
-        font-size: 0.9rem;
-        color: var(--color-text-soft);
-        font-weight: 400;
-      }
-      .why {
-        background: var(--color-primary-soft);
-        border-radius: calc(var(--radius) / 2);
-        padding: 0.5rem 0.75rem;
-        font-size: 0.85rem;
-        margin-top: 0.75rem;
-      }
-      .chart {
-        width: 100%;
-        height: auto;
-      }
-      .chart-line {
-        fill: none;
-        stroke: var(--chart-line);
-        stroke-width: 3;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-      }
-      .chart-area {
-        fill: var(--chart-fill);
-      }
-      .chart-grid {
-        stroke: var(--chart-grid);
-        stroke-width: 1;
-      }
-      .chart-dot {
-        fill: var(--chart-line);
-      }
-      .chart-bar {
-        fill: var(--chart-bar);
-      }
-      .chart-text {
-        fill: var(--chart-label);
-        font-size: 12px;
-        font-family: var(--font-family);
-      }
-      .chart-value {
-        fill: var(--chart-line);
-        font-size: 14px;
-        font-weight: 700;
-        font-family: var(--font-family);
-      }
-      .weak-list {
-        list-style: none;
-        padding: 0;
-        margin: 0.5rem 0 0;
-      }
-      .weak-list li {
-        display: flex;
-        justify-content: space-between;
-        gap: 1rem;
-        padding: 0.5rem 0;
-        border-bottom: 1px dashed var(--chart-grid);
-      }
-      .weak-list li:last-child {
-        border-bottom: none;
-      }
-      .weak-meta {
-        color: var(--color-text-soft);
-        font-size: 0.85rem;
-        white-space: nowrap;
-      }
-      .empty {
-        color: var(--color-text-soft);
-        background: var(--color-bg);
-        border-radius: calc(var(--radius) / 2);
-        padding: 1rem;
-        text-align: center;
-      }
     </style>
   </head>
   <body>
@@ -262,138 +171,18 @@ const hasAnyData = logs.length > 0;
         ))}
       </nav>
 
-      {/* ① 習得数の成長曲線 */}
-      <section class="card">
-        <h2>マスターした九九</h2>
-        <p class="headline">
-          {totalMastered} こ
-          {highlights.masteredThisWeek > 0 && <small>(今週 +{highlights.masteredThisWeek} こ!)</small>}
-        </p>
-        {curveChart.hasData && totalMastered > 0 ? (
-          <svg class="chart" viewBox={`0 0 ${curveChart.width} ${curveChart.height}`} role="img" aria-label="マスター数の推移">
-            {curveChart.gridYs.map((y) => (
-              <line class="chart-grid" x1="0" y1={y} x2={curveChart.width} y2={y} />
-            ))}
-            <path class="chart-area" d={curveChart.areaPath} />
-            <path class="chart-line" d={curveChart.linePath} />
-            {curveChart.lastDot && <circle class="chart-dot" cx={curveChart.lastDot.x} cy={curveChart.lastDot.y} r="5" />}
-            {curveChart.lastValue && (
-              <text class="chart-value" x={curveChart.lastValue.x} y={curveChart.lastValue.y}>
-                {curveChart.lastValue.text}
-              </text>
-            )}
-            {curveChart.xLabels.map((label) => (
-              <text class="chart-text" x={label.x} y={curveChart.height - 4} text-anchor={label.anchor}>
-                {label.text}
-              </text>
-            ))}
-          </svg>
-        ) : (
-          <p class="empty">まだデータがたまっていません。ドリルを始めると、ここに成長曲線が現れます。</p>
-        )}
-        <p class="why">
-          「マスター」は<strong>5回連続・すばやく正解</strong>できたときにだけ付く記録です。
-          一度マスターした九九は下がらない設計なので、この線は積み上がる一方。がんばりがそのまま残ります。
-        </p>
-      </section>
-
-      {/* ② 回答スピードの推移 */}
-      <section class="card">
-        <h2>答えるはやさ</h2>
-        {latestSpeed !== null && (
-          <p class="headline">
-            {latestSpeed} 秒 <small>(直近の平均)</small>
-          </p>
-        )}
-        {speedChart.hasData ? (
-          <svg class="chart" viewBox={`0 0 ${speedChart.width} ${speedChart.height}`} role="img" aria-label="週別の平均回答時間">
-            {speedChart.gridYs.map((y) => (
-              <line class="chart-grid" x1="0" y1={y} x2={speedChart.width} y2={y} />
-            ))}
-            <path class="chart-area" d={speedChart.areaPath} />
-            <path class="chart-line" d={speedChart.linePath} />
-            {speedChart.lastDot && <circle class="chart-dot" cx={speedChart.lastDot.x} cy={speedChart.lastDot.y} r="5" />}
-            {speedChart.lastValue && (
-              <text class="chart-value" x={speedChart.lastValue.x} y={speedChart.lastValue.y}>
-                {speedChart.lastValue.text}
-              </text>
-            )}
-            {speedChart.xLabels.map((label) => (
-              <text class="chart-text" x={label.x} y={speedChart.height - 4} text-anchor={label.anchor}>
-                {label.text}
-              </text>
-            ))}
-          </svg>
-        ) : (
-          <p class="empty">正解の記録がたまると、はやさの変化がここに出ます。</p>
-        )}
-        <p class="why">
-          答えるまでの時間が短くなっていくのは、「がんばって思い出す」から「そらで言える」に
-          変わってきている証拠です。暗記の定着はこの下がり方に表れます。
-        </p>
-      </section>
-
-      {/* ③ 日々の取り組み量 */}
-      <section class="card">
-        <h2>とりくみのようす(直近28日)</h2>
-        <p class="headline">
-          {totalAnswers28d} 回
-          {activity.streak > 0 && <small>(ただいま連続 {activity.streak} 日!)</small>}
-        </p>
-        {activityChart.hasData ? (
-          <svg
-            class="chart"
-            viewBox={`0 0 ${activityChart.width} ${activityChart.height}`}
-            role="img"
-            aria-label="日別の回答数"
-          >
-            <line
-              class="chart-grid"
-              x1="0"
-              y1={activityChart.baselineY}
-              x2={activityChart.width}
-              y2={activityChart.baselineY}
-            />
-            {activityChart.bars.map((bar) => (
-              <rect class="chart-bar" x={bar.x} y={bar.y} width={bar.w} height={bar.h} rx="3" />
-            ))}
-            {activityChart.xLabels.map((label) => (
-              <text class="chart-text" x={label.x} y={activityChart.height - 4} text-anchor={label.anchor}>
-                {label.text}
-              </text>
-            ))}
-          </svg>
-        ) : (
-          <p class="empty">この28日間の記録はまだありません。</p>
-        )}
-        <p class="why">毎日すこしずつが、暗記のいちばんの近道です。棒がとぎれない日をいっしょに増やしていきましょう。</p>
-      </section>
-
-      {/* ④ つまずきポイント */}
-      <section class="card">
-        <h2>いっしょに練習したいところ</h2>
-        {weakFacts.length > 0 ? (
-          <ul class="weak-list">
-            {weakFacts.map((fact) => (
-              <li>
-                <span>{fact.label}</span>
-                <span class="weak-meta">
-                  まちがい {fact.incorrectCount} 回
-                  {fact.avgSeconds !== null && ` ・ 平均 ${fact.avgSeconds} 秒`}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p class="empty">
-            {hasAnyData ? 'いま目立ったつまずきはありません。すばらしい!' : 'ドリルを始めると、練習ポイントがここに出ます。'}
-          </p>
-        )}
-        <p class="why">
-          まちがいや時間のかかった九九を、まちがいの多い順にならべています。
-          おふろやおでかけの時間に、声に出していっしょに唱えるのがおすすめです。
-        </p>
-      </section>
+      <SummaryView
+        curveChart={curveChart}
+        speedChart={speedChart}
+        activityChart={activityChart}
+        weakFacts={weakFacts}
+        totalMastered={totalMastered}
+        masteredThisWeek={highlights.masteredThisWeek}
+        latestSpeed={latestSpeed}
+        totalAnswers28d={totalAnswers28d}
+        streak={activity.streak}
+        hasAnyData={hasAnyData}
+      />
     </main>
   </body>
 </html>
