@@ -259,6 +259,8 @@ button, summary { font-family: var(--font-body); }
   opacity: 0;
   pointer-events: none;
 }
+.ko-banner.perfect { font-size: clamp(36px, min(10vw, 22vh), 104px); -webkit-text-stroke-width: 9px; color: #fff; text-shadow: 0 0 .35em var(--pop), 0 0 .7em #ff8a3d; }
+.conf { position: absolute; top: -14px; width: 11px; height: 15px; border: 2px solid var(--ink); }
 
 /* 問題パネル */
 .panel, .records {
@@ -721,6 +723,7 @@ button, summary { font-family: var(--font-body); }
       <div>これまでのワースト<b id="cycleWorst">0</b></div>
     </div>
     <p class="cycle-msg" id="cycleMsg"></p>
+    <p class="cycle-msg" id="cyclePerfect"></p>
     <button class="btn" id="cycleNext" type="button" style="background:var(--pop)">つぎのサイクルへ</button>
     <button class="btn" id="cycleTop" type="button" style="font-size:14px;padding:8px">名前えらびにもどる（設定を変える）</button>
   </div>
@@ -766,6 +769,8 @@ button, summary { font-family: var(--font-body); }
   let queue = [], qi = 0, bag = [];   // いまの敵が出す問題と、その何問目か
   let run = null, runResult = null;   // じゅんばんで1つの段を通している間の成績と、その結果
   let punched = 0;      // このサイクルでなぐられた回数（＝まちがえた回数）
+  let flawless = true;  // いまの敵に、ここまで全問「速く正解」しているか
+  let perfects = 0;     // このサイクルでパーフェクトにたおした敵の数
   const images = { idle: null, hit: null, ko: null };   // 設定画面から手で差し替えた絵（全部の敵に使う）
   // 敵ごとの絵。ENEMIES に img: 'フォルダ名' と書くと img/enemies/フォルダ名/ の idle・hit・ko・attack.png を使う。
   // 書いていない敵は、コードで描いた仮の絵で動く
@@ -890,6 +895,23 @@ button, summary { font-family: var(--font-body); }
       crack.connect(hf).connect(hg).connect(bus); crack.start(T);
     } catch (e) {}
   }
+  // パーフェクトのファンファーレ：駆け上がる4音と、最後の和音
+  function sndFanfare() {
+    const a = ac(); if (!a) return;
+    try {
+      const t = a.currentTime, dest = out(a);
+      const note = (f, at, len, vol) => ['square', 'triangle'].forEach((type, i) => {
+        const o = a.createOscillator(), g = a.createGain();
+        o.type = type; o.frequency.value = f * (i ? 2 : 1);
+        g.gain.setValueAtTime(0.0001, t + at);
+        g.gain.linearRampToValueAtTime(vol * (i ? 0.7 : 0.45), t + at + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.001, t + at + len);
+        o.connect(g).connect(dest); o.start(t + at); o.stop(t + at + len + 0.02);
+      });
+      [523.25, 659.25, 783.99].forEach((f, i) => note(f, i * 0.09, 0.14, 0.3));
+      [1046.5, 783.99, 659.25].forEach(f => note(f, 0.27, 0.95, 0.22));
+    } catch (e) {}
+  }
   function tone(freq, len) {              // カウントダウンの「ピッ」
     const a = ac(); if (!a) return;
     try {
@@ -946,7 +968,7 @@ button, summary { font-family: var(--font-body); }
     queue = buildQueue(); qi = 0;
     // じゅんばん（ふつうの形）は答えが予想できるので、九九の表には記録せず、段ごとの成績として数える
     run = data.type === 'seq' && data.form === 'norm' ? { a: queue[0].a, total: 0, miss: 0, fast: true, valid: true } : null;
-    runResult = null;
+    runResult = null; flawless = true;
     $('enemyName').textContent = e.name + (data.type === 'seq' ? '（' + queue[0].a + 'の段）' : '');
     $('shirt').setAttribute('fill', e.shirt);
     $('hair').setAttribute('fill', e.hair);
@@ -1122,6 +1144,7 @@ button, summary { font-family: var(--font-body); }
       : before == null ? 'はじめての記録です。'
       : isWorst ? 'ワースト記録をこうしん…（前は' + before + '回）'
       : 'ワースト（' + before + '回）より' + (before - n) + '回すくない！';
+    $('cyclePerfect').textContent = perfects ? `パーフェクト ${perfects}／${data.dans.length}体` : '';
     renderWorst();
     paused = true;
     $('cycle').hidden = false;
@@ -1182,7 +1205,7 @@ button, summary { font-family: var(--font-body); }
   $('cycleTop').addEventListener('click', () => { $('cycle').hidden = true; openWho(); });
   $('cycleNext').addEventListener('click', () => {
     $('cycle').hidden = true;
-    punched = 0; paused = false;
+    punched = 0; perfects = 0; paused = false;
     spawnEnemy();
   });
 
@@ -1226,6 +1249,7 @@ button, summary { font-family: var(--font-body); }
   function hit(heavy) {
     dir = -dir;
     const ko = qi >= queue.length, g = gen;
+    const perfect = ko && flawless;        // この敵の全問を速く正解した
     if (ko) runResult = finishRun();
     clearTimeout(stateTimer);
 
@@ -1238,19 +1262,23 @@ button, summary { font-family: var(--font-body); }
     };
     const big = () => {                    // ストレート／KOの一撃：ヒットストップで一瞬止めてから吹っ飛ばす
       if (g !== gen) return;
-      const pt = hitPoint(), p = ko ? 1.4 : 1;
+      const pt = hitPoint(), p = perfect ? 1.9 : ko ? 1.4 : 1;
       enemy.style.setProperty('--tilt', (dir * 13) + 'deg');
       setState(ko ? 'ko' : 'hit');
       clearTimeout(stateTimer);
       spark(pt, true);
       if (ko) sndKO(); else sndStraight();
       flashScreen(ko ? 1 : 0.7);
-      bits(pt, ko ? 16 : 9);
+      bits(pt, perfect ? 34 : ko ? 16 : 9);
+      if (perfect) {                       // 火花を重ねて、止める時間も長くする
+        setTimeout(() => { if (g === gen) { spark(hitPoint(), true); flashScreen(1); } }, 110);
+        setTimeout(() => { if (g === gen) spark(hitPoint(), true); }, 210);
+      }
       setTimeout(() => {
         if (g !== gen) return;
         shake(p);
-        if (ko) knockout(); else { recoil(p); stateTimer = setTimeout(() => setState('idle'), 360); }
-      }, ko ? 150 : 70);
+        if (ko) knockout(perfect); else { recoil(p); stateTimer = setTimeout(() => setState('idle'), 360); }
+      }, perfect ? 330 : ko ? 150 : 70);
     };
 
     if (heavy) {                           // ワン・ツー
@@ -1268,8 +1296,8 @@ button, summary { font-family: var(--font-body); }
   const KO_SHOW = 1000; // 「K.O.!」を見せる時間
   const KO_REST = 800;  // そのあと、次の敵が出るまでの一呼吸
   const KO_RESULT = 1700; // じゅんばんの成績を出す時は、一呼吸のかわりにこの長さだけ見せる
-  function twinkle(pt) {
-    ping();
+  function twinkle(pt, silent) {
+    if (!silent) ping();
     const el = document.createElement('div');
     el.className = 'twinkle';
     el.style.left = pt.x + 'px'; el.style.top = pt.y + 'px';
@@ -1282,33 +1310,77 @@ button, summary { font-family: var(--font-body); }
       { transform: 'scale(0) rotate(90deg)', opacity: 0 },
     ], { duration: 520, easing: 'ease-out' }).onfinish = () => el.remove();
   }
-  function knockout() {
-    kos++; renderStats(false);
+  const PERFECT_SHOW = 1700;   // 「PERFECT!」を見せる時間
+  const CONF_COLORS = ['#ffd60a', '#ff3b30', '#35c98d', '#fffdf5', '#8e5bff', '#ff8a3d'];
+  function confetti(n) {                 // 上から降る紙ふぶき
+    const w = stage.getBoundingClientRect().width, h = stage.getBoundingClientRect().height;
+    for (let i = 0; i < n; i++) {
+      const c = document.createElement('div');
+      c.className = 'conf';
+      c.style.left = rand(0, w) + 'px';
+      c.style.background = CONF_COLORS[i % CONF_COLORS.length];
+      fx.appendChild(c);
+      c.animate([
+        { transform: 'translate(0,0) rotate(0deg)', opacity: 1 },
+        { transform: `translate(${rand(-60, 60)}px,${h + 40}px) rotate(${rand(-720, 720)}deg)`, opacity: 1, offset: 0.9 },
+        { transform: `translate(${rand(-60, 60)}px,${h + 60}px) rotate(${rand(-720, 720)}deg)`, opacity: 0 },
+      ], { duration: rand(1100, 2100), delay: rand(0, 700), easing: 'cubic-bezier(.3,.2,.6,1)', fill: 'backwards' }).onfinish = () => c.remove();
+    }
+  }
+  // perfect=true：その敵の全問を速く正解した時。星の花火・紙ふぶき・ファンファーレ・「PERFECT!」で大きく祝う
+  function knockout(perfect) {
+    kos++; if (perfect) perfects++;
+    renderStats(false);
     const d = dir, g = gen, res = runResult;
+    const show = perfect ? PERFECT_SHOW : KO_SHOW;
     const rest = res ? KO_RESULT : KO_REST;
-    if (res) setTimeout(() => { if (g === gen) showRunResult(res, rest); }, FLY + 40 + KO_SHOW);
+    if (res) setTimeout(() => { if (g === gen) showRunResult(res, rest); }, FLY + 40 + show);
     // 画面の奥（消失点）へ飛んでいって星になる
     const sr = stage.getBoundingClientRect(), wr = enemyWrap.getBoundingClientRect();
     const star = { x: sr.width * (0.5 + d * 0.2), y: sr.height * 0.34 };          // 星になる位置（ステージ内）
     const tx = sr.left + star.x - (wr.left + wr.width / 2), ty = sr.top + star.y - wr.bottom;
-    const spin = REDUCED ? 0 : d * 720;
+    const spin = REDUCED ? 0 : d * (perfect ? 1440 : 720);
     enemyWrap.animate([
       { transform: 'translate(0px,0px) rotate(0deg) scale(1)', opacity: 1 },
-      { transform: `translate(${d * 18}px,-26px) rotate(${d * 24}deg) scale(1.12)`, opacity: 1, offset: 0.1 },
+      { transform: `translate(${d * 18}px,-26px) rotate(${d * 24}deg) scale(${perfect ? 1.3 : 1.12})`, opacity: 1, offset: 0.1 },
       { transform: `translate(${tx}px,${ty}px) rotate(${spin}deg) scale(.03)`, opacity: 1, offset: 0.96 },
       { transform: `translate(${tx}px,${ty}px) rotate(${spin}deg) scale(.01)`, opacity: 0 },
     ], { duration: FLY, easing: 'cubic-bezier(.15,.6,.25,1)', fill: 'forwards' });
     setTimeout(() => { if (g === gen) twinkle(star); }, FLY - 40);
-    koBanner.animate([
+    if (perfect) {
+      setTimeout(() => {
+        if (g !== gen) return;
+        sndFanfare(); flashScreen(0.9);
+        confetti(REDUCED ? 14 : 70);
+        if (!REDUCED) {
+          burst.animate([{ opacity: 0.1, transform: 'rotate(0deg)' }, { opacity: 0.85, transform: 'rotate(25deg)', offset: 0.15 },
+            { opacity: 0.7, transform: 'rotate(120deg)', offset: 0.8 }, { opacity: 0.1, transform: 'rotate(140deg)' }], { duration: PERFECT_SHOW });
+          for (let i = 0; i < 6; i++) setTimeout(() => {       // 星の花火
+            if (g === gen) twinkle({ x: sr.width * rand(0.12, 0.88), y: sr.height * rand(0.15, 0.7) }, true);
+          }, 120 + i * 210);
+        }
+      }, FLY + 40);
+    }
+    koBanner.textContent = perfect ? 'PERFECT!' : 'K.O.!';
+    koBanner.classList.toggle('perfect', !!perfect);
+    koBanner.animate(perfect ? [
+      { opacity: 0, transform: 'scale(3) rotate(-8deg)' },
+      { opacity: 1, transform: 'scale(1) rotate(-8deg)', offset: 0.1 },
+      { opacity: 1, transform: 'scale(1.12) rotate(-5deg)', offset: 0.3 },
+      { opacity: 1, transform: 'scale(1) rotate(-8deg)', offset: 0.5 },
+      { opacity: 1, transform: 'scale(1.1) rotate(-6deg)', offset: 0.7 },
+      { opacity: 1, transform: 'scale(1.04) rotate(-8deg)', offset: 0.9 },
+      { opacity: 0, transform: 'scale(1.2) rotate(-8deg)' },
+    ] : [
       { opacity: 0, transform: 'scale(2.4) rotate(-8deg)' },
       { opacity: 1, transform: 'scale(1) rotate(-8deg)', offset: 0.12 },
       { opacity: 1, transform: 'scale(1.04) rotate(-8deg)', offset: 0.85 },
       { opacity: 0, transform: 'scale(1.1) rotate(-8deg)' },
-    ], { duration: KO_SHOW, delay: FLY + 40, easing: 'ease-out' });   // 星になってから出す
+    ], { duration: show, delay: FLY + 40, easing: 'ease-out' });   // 星になってから出す
     setTimeout(() => {
       if (g !== gen) return;               // 途中で交代していたら何もしない
       afterEnemy();
-    }, FLY + 40 + KO_SHOW + rest);
+    }, FLY + 40 + show + rest);
   }
 
   /* ---------- 記録（localStorage） ---------- */
@@ -1500,6 +1572,7 @@ button, summary { font-family: var(--font-body); }
     const ms = performance.now() - qStart;
     const counted = qValid && ms < TOO_LONG;
     if (!ans.startsWith(typed + d)) {            // まちがい：殴られて、答えを見せてから次の問題へ
+      flawless = false;
       if (run) { run.miss++; }
       else if (counted) record(q.a, q.b, ms, false, q.hole);
       const hasty = ms < data.th;                // 速く答えてまちがえた
@@ -1520,6 +1593,7 @@ button, summary { font-family: var(--font-body); }
     if (typed !== ans) return;
 
     const fast = ms < data.th;
+    if (!fast) flawless = false;
     if (run) { run.total += ms; if (!fast) run.fast = false; if (!counted) run.valid = false; }
     else if (counted) record(q.a, q.b, ms, true, q.hole);
     if (fast) judge('memo', run ? 'はやい！' : '暗記！', `${sec(ms)}秒` + (counted ? '' : '（記録なし）'));
@@ -1771,7 +1845,7 @@ button, summary { font-family: var(--font-body); }
   }
   // 最初の敵からやり直す（遊ぶ人をえらんだ時、出題の設定を変えた時）
   function restartRun() {
-    gen++; locked = false; combo = 0; kos = 0; enemyIdx = 0; punched = 0; bag = [];
+    gen++; locked = false; combo = 0; kos = 0; enemyIdx = 0; punched = 0; perfects = 0; bag = [];
     clearTimeout(stateTimer);
     enemyWrap.getAnimations().forEach(a => a.cancel());
     $('cycle').hidden = true;
