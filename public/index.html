@@ -146,7 +146,7 @@ button, summary { font-family: var(--font-body); }
   animation: breathe 2.4s ease-in-out infinite;
   transform-origin: 50% 100%;
 }
-.enemy[data-state="hit"], .enemy[data-state="ko"] { animation: none; }
+.enemy[data-state="hit"], .enemy[data-state="ko"], .enemy[data-state="attack"] { animation: none; }
 @keyframes breathe {
   0%, 100% { transform: scale(1, 1); }
   50% { transform: scale(1.012, 1.025); }
@@ -392,6 +392,16 @@ button, summary { font-family: var(--font-body); }
 }
 .who[hidden] { display: none; }
 #unlock { z-index: 25; }
+#pin, #lockWarn { z-index: 30; }
+.pin-dots { display: flex; justify-content: center; gap: 10px; }
+.pin-dots i { width: 22px; height: 22px; border: 3px solid var(--ink); border-radius: 50%; background: #fff; }
+.pin-dots i.on { background: var(--ink); }
+.pin-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.pin-pad .btn { font-family: var(--font-display); font-weight: 400; font-size: 22px; padding: 8px 0; touch-action: manipulation; }
+.pin-pad .btn.sub { font-family: var(--font-body); font-weight: 700; font-size: 14px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.row2 .btn { font-size: 16px; padding: 10px; }
+.warn-text { margin: 0; font-size: 14px; line-height: 1.7; font-weight: 700; }
 .who-card {
   width: min(100%, 420px);
   background: var(--paper);
@@ -548,6 +558,11 @@ button, summary { font-family: var(--font-body); }
         <label for="th">暗記とみなす速さ：<span id="thVal"></span>秒より速い</label>
         <input id="th" type="range" min="1" max="5" step="0.5">
       </div>
+      <div class="setting">
+        <h3>設定のロック</h3>
+        <div class="choice"><button class="btn" id="lockBtn" type="button" aria-pressed="false">ロック：OFF</button></div>
+        <p class="hint">ONにすると、この画面を開くときに6桁のパスワードが必要になります。おうちの人が設定を固定したいときに使います。</p>
+      </div>
       <details class="swap">
         <summary>敵の画像を自分の絵に差し替える</summary>
         <div class="swap-body">
@@ -583,6 +598,27 @@ button, summary { font-family: var(--font-body); }
     <h2 id="unlockTitle"></h2>
     <p class="cycle-msg" id="unlockMsg"></p>
     <button class="btn" id="unlockOk" type="button" style="font-size:18px;padding:12px">OK</button>
+  </div>
+</div>
+
+<div class="who" id="lockWarn" role="alertdialog" aria-modal="true" aria-labelledby="lockWarnTitle" hidden>
+  <div class="who-card">
+    <h2 id="lockWarnTitle">ロックする前に</h2>
+    <p class="warn-text">パスワードを忘れると、もとにもどせません。<br>その場合は、名前えらびの画面の「消す」で、名前・記録・設定をまとめて消すしかありません。</p>
+    <div class="row2">
+      <button class="btn" id="lockWarnCancel" type="button">やめる</button>
+      <button class="btn" id="lockWarnOk" type="button" style="background:var(--pop)">OK</button>
+    </div>
+  </div>
+</div>
+
+<div class="who" id="pin" role="dialog" aria-modal="true" aria-labelledby="pinTitle" hidden>
+  <div class="who-card">
+    <h2 id="pinTitle"></h2>
+    <p class="cycle-msg" id="pinMsg"></p>
+    <div class="pin-dots" id="pinDots"></div>
+    <div class="pin-pad" id="pinPad"></div>
+    <p class="who-note" id="pinNote" aria-live="polite"></p>
   </div>
 </div>
 
@@ -647,7 +683,12 @@ button, summary { font-family: var(--font-body); }
   let stateTimer = 0;
   let queue = [], qi = 0, bag = [];   // いまの敵が出す問題と、その何問目か
   let punched = 0;      // このサイクルでなぐられた回数（＝まちがえた回数）
-  const images = { idle: null, hit: null, ko: null };
+  const images = { idle: null, hit: null, ko: null };   // 設定画面から手で差し替えた絵（全部の敵に使う）
+  // 敵ごとの絵。ENEMIES に img: 'フォルダ名' と書くと img/enemies/フォルダ名/ の idle・hit・ko・attack.png を使う。
+  // 書いていない敵は、コードで描いた仮の絵で動く
+  const IMG_DIR = 'img/enemies/', POSES = ['idle', 'hit', 'ko', 'attack'];
+  let art = null;
+  const artOf = e => e.img ? Object.fromEntries((e.poses || POSES).map(k => [k, IMG_DIR + e.img + '/' + k + '.png'])) : null;
 
   /* ---------- 音（Web Audioで合成） ---------- */
   let audio = null, soundOn = true;
@@ -708,11 +749,16 @@ button, summary { font-family: var(--font-body); }
   /* ---------- 表示 ---------- */
   function setState(s) {
     enemy.dataset.state = s;
-    if (images.idle) {
-      $('enemyImg').src = images[s] || images.idle;
-      enemy.classList.toggle('fallback-hit', s !== 'idle' && !images[s]);
+    const set = images.idle ? images : art;
+    if (set) {
+      $('enemyImg').src = set[s] || set.idle;
+      enemy.classList.toggle('fallback-hit', (s === 'hit' || s === 'ko') && !set[s]);
     }
   }
+  $('enemyImg').addEventListener('error', () => {      // 絵のファイルが無い・読めない時は仮の絵にもどす
+    if (images.idle || !art) return;
+    art = null; enemy.classList.remove('has-img', 'fallback-hit');
+  });
   function renderStats(bump) {
     const c = $('combo'); c.textContent = combo; $('koCount').textContent = kos;
     if (bump && combo > 1) c.animate([{ transform: 'scale(1.5)' }, { transform: 'scale(1)' }], { duration: 140 });
@@ -724,6 +770,9 @@ button, summary { font-family: var(--font-body); }
     $('shirt').setAttribute('fill', e.shirt);
     $('hair').setAttribute('fill', e.hair);
     document.querySelectorAll('.skin').forEach(n => n.setAttribute('fill', e.skin));
+    art = artOf(e);
+    if (art) Object.values(art).forEach(u => { new Image().src = u; });   // 先に読んでおく
+    enemy.classList.toggle('has-img', !!(images.idle || art));
     setState('idle');
   }
 
@@ -825,6 +874,20 @@ button, summary { font-family: var(--font-body); }
   let punchTimer = 0;
   function punchPlayer(counter) {
     const skin = ENEMIES[enemyIdx % ENEMIES.length].skin;
+    if (!images.idle && art && art.attack) {         // 攻撃の絵がある敵：その絵に切り替えて、ぐっと手前に寄せる
+      setState('attack');
+      clearTimeout(stateTimer);
+      stateTimer = setTimeout(() => { if (enemy.dataset.state === 'attack') setState('idle'); }, 430);
+      const z = REDUCED ? 1.12 : 1.55;
+      enemyWrap.animate([
+        { transform: 'scale(1)', easing: 'cubic-bezier(.2,.9,.3,1)' },
+        { transform: `scale(${z}) translateY(6%)`, offset: 0.22 },
+        { transform: `scale(${z * 0.97}) translateY(6%)`, offset: 0.6 },
+        { transform: 'scale(1)' },
+      ], { duration: 430 });
+      punchImpact(counter);
+      return;
+    }
     const el = document.createElement('div');
     el.className = 'punch';
     el.innerHTML = `<svg viewBox="0 0 100 100">
@@ -845,6 +908,9 @@ button, summary { font-family: var(--font-body); }
     enemy.classList.add('punching');                 // 構えていた拳が飛んできたように見せる
     clearTimeout(punchTimer);
     punchTimer = setTimeout(() => enemy.classList.remove('punching'), 430);
+    punchImpact(counter);
+  }
+  function punchImpact(counter) {
     setTimeout(() => {                               // 当たった瞬間
       thump(counter ? 1 : 0.8); shake(counter ? 1.3 : 0.9);
       const r = stage.getBoundingClientRect();
@@ -857,6 +923,7 @@ button, summary { font-family: var(--font-body); }
       }
     }, 90);
   }
+
 
   /* ---------- 1サイクル（有効にした段の数だけ敵と戦う）の結果 ---------- */
   function renderWorst() {
@@ -973,7 +1040,7 @@ button, summary { font-family: var(--font-body); }
   const RECENT = 3;     // 判定に使う直近の回数
   const TOO_LONG = 30000; // これより長い回答は席を外したとみなして記録しない
   const ALL_DANS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0 });
+  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0, lock: null });
   function clean(p) {            // 保存データが壊れていても動くように整える
     if (!p || typeof p !== 'object') return null;
     const out = newProfile(String(p.name || 'プレイヤー').slice(0, 8));
@@ -982,6 +1049,7 @@ button, summary { font-family: var(--font-body); }
     if (p.unlocked === 1 || p.unlocked === 2) out.unlocked = p.unlocked;
     if (p.level === 1 || p.level === 2) out.level = Math.min(p.level, out.unlocked);
     if (TYPES.some(t => t[0] === p.type)) out.type = p.type;
+    if (typeof p.lock === 'string' && /^\d{6}$/.test(p.lock)) out.lock = p.lock;
     if (Array.isArray(p.dans)) { const d = LEVELS[out.level].nums.filter(n => p.dans.includes(n)); if (d.length) out.dans = d; }
     if (p.cells && typeof p.cells === 'object') out.cells = p.cells;
     if (Number.isInteger(p.worst) && p.worst >= 0) out.worst = p.worst;
@@ -1146,6 +1214,12 @@ button, summary { font-family: var(--font-body); }
     checkUnlock();
   }
   document.addEventListener('keydown', e => {
+    if (pinResolve) {                              // パスワード入力中はそちらへ
+      if (/^[0-9]$/.test(e.key)) { e.preventDefault(); pinKey(e.key); }
+      else if (e.key === 'Backspace') { e.preventDefault(); pinKey('back'); }
+      else if (e.key === 'Escape') { e.preventDefault(); pinKey('cancel'); }
+      return;
+    }
     if (paused || e.ctrlKey || e.metaKey || e.altKey) return;
     if (/^[0-9]$/.test(e.key)) {
       if (e.target && e.target.type === 'range') return;
@@ -1178,8 +1252,7 @@ button, summary { font-family: var(--font-body); }
   }
   $('unlockOk').addEventListener('click', () => {
     $('unlock').hidden = true;
-    paused = !$('cycle').hidden || !$('settings').hidden;
-    qValid = false;                               // 止まっていた問題の時間は記録しない
+    resume();
     if (!$('settings').hidden) renderSettings();
   });
 
@@ -1235,11 +1308,85 @@ button, summary { font-family: var(--font-body); }
     });
     $('th').value = data.th / 1000;
     $('thVal').textContent = sec(data.th);
+    $('lockBtn').setAttribute('aria-pressed', String(!!data.lock));
+    $('lockBtn').textContent = data.lock ? 'ロック：ON（押すと解除）' : 'ロック：OFF';
   }
   $('th').addEventListener('input', e => { data.th = Number(e.target.value) * 1000; save(); renderRecords(); renderSettings(); });
-  $('setBtn').addEventListener('click', () => {
-    if (!$('who').hidden) return;
-    paused = true; dirty = false;
+  // ゲームにもどる時：ほかの画面が出ていなければ再開する
+  function resume() {
+    paused = ['who', 'settings', 'cycle', 'unlock', 'pin', 'lockWarn'].some(id => !$(id).hidden);
+    qValid = false;                               // 止まっていた問題の時間は記録しない
+  }
+
+  /* ---------- 6桁のパスワード入力 ---------- */
+  let pinResolve = null, pinVal = '';
+  function renderPin() {
+    $('pinDots').innerHTML = Array.from({ length: 6 }, (_, i) => `<i class="${i < pinVal.length ? 'on' : ''}"></i>`).join('');
+    $('pinDots').setAttribute('aria-label', `6桁のうち${pinVal.length}桁入力`);
+  }
+  function closePin(v) {
+    if (!pinResolve) return;
+    const r = pinResolve; pinResolve = null;
+    $('pin').hidden = true;
+    r(v);
+  }
+  function pinKey(k) {
+    if (!pinResolve) return;
+    if (k === 'cancel') { closePin(null); return; }
+    if (k === 'back') pinVal = pinVal.slice(0, -1);
+    else if (pinVal.length < 6) pinVal += k;
+    renderPin();
+    if (pinVal.length === 6) { const v = pinVal; setTimeout(() => closePin(v), 140); }
+  }
+  [['1'], ['2'], ['3'], ['4'], ['5'], ['6'], ['7'], ['8'], ['9'], ['cancel', 'やめる'], ['0'], ['back', '1文字けす']].forEach(([k, label]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn' + (label ? ' sub' : ''); b.textContent = label || k;
+    b.addEventListener('click', () => { pinKey(k); b.blur(); });
+    $('pinPad').appendChild(b);
+  });
+  // 6桁を入れてもらう。やめたら null
+  function askPin(title, msg, note) {
+    return new Promise(res => {
+      pinResolve = res; pinVal = '';
+      $('pinTitle').textContent = title; $('pinMsg').textContent = msg; $('pinNote').textContent = note || '';
+      renderPin();
+      $('pin').hidden = false;
+    });
+  }
+
+  /* ---------- 設定のロック ---------- */
+  async function setLock() {
+    let note = '';
+    for (;;) {
+      const a = await askPin('パスワードを決める', 'ロックをはずす時に使う、6桁の数字を入れてください。', note);
+      if (a === null) return;
+      const b = await askPin('もう一度入力', 'たしかめのため、同じ6桁をもう一度入れてください。');
+      if (b === null) return;
+      if (a === b) { data.lock = a; save(); renderSettings(); return; }
+      note = '2回の数字がちがいました。最初からやり直してください。';
+    }
+  }
+  $('lockBtn').addEventListener('click', () => {
+    if (data.lock) { data.lock = null; save(); renderSettings(); return; }   // 画面を開けている＝解除できる人
+    $('lockWarn').hidden = false;
+    try { $('lockWarnOk').focus({ preventScroll: true }); } catch (e) {}
+  });
+  $('lockWarnCancel').addEventListener('click', () => { $('lockWarn').hidden = true; });
+  $('lockWarnOk').addEventListener('click', () => { $('lockWarn').hidden = true; setLock(); });
+
+  $('setBtn').addEventListener('click', async () => {
+    if (!$('who').hidden || pinResolve) return;
+    paused = true;
+    if (data.lock) {                               // ロック中はパスワードが合うまで開かない
+      let note = '';
+      for (;;) {
+        const v = await askPin('パスワードを入力', '設定はロックされています。6桁の数字を入れてください。', note);
+        if (v === null) { resume(); return; }
+        if (v === data.lock) break;
+        note = 'パスワードがちがいます。';
+      }
+    }
+    dirty = false;
     renderSettings(); renderRecords(); renderWorst();
     $('settings').hidden = false;
     $('settings').scrollTop = 0;
@@ -1247,7 +1394,7 @@ button, summary { font-family: var(--font-body); }
   });
   $('setClose').addEventListener('click', () => {
     $('settings').hidden = true;
-    paused = false; qValid = false;
+    resume();
     if (dirty) restartRun();
     checkUnlock();                                // 「暗記とみなす速さ」を変えて条件を満たした場合
   });
@@ -1356,7 +1503,9 @@ button, summary { font-family: var(--font-body); }
   $('imgReset').addEventListener('click', () => {
     ['idle', 'hit', 'ko'].forEach(k => { if (images[k]) URL.revokeObjectURL(images[k]); images[k] = null; });
     ['imgIdle', 'imgHit', 'imgKo'].forEach(id => { $(id).value = ''; });
-    enemy.classList.remove('has-img', 'fallback-hit');
+    enemy.classList.remove('fallback-hit');
+    enemy.classList.toggle('has-img', !!art);
+    setState(enemy.dataset.state);
   });
 
   // 開始時は必ず名前を選ぶ。後ろには前回の人の記録を表示しておく
