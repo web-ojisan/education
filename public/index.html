@@ -36,7 +36,7 @@ body {
   font-weight: 500;
 }
 .game {
-  max-width: 1120px;
+  max-width: 860px;
   margin: 0 auto;
   padding: 12px 16px 24px;
   display: grid;
@@ -44,10 +44,6 @@ body {
   gap: 14px;
 }
 .play { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-@media (min-width: 940px) {
-  .game { grid-template-columns: minmax(0, 1fr) 400px; align-items: start; }
-  .hud { grid-column: 1 / -1; }
-}
 
 /* HUD */
 .hud {
@@ -298,6 +294,10 @@ button, summary { font-family: var(--font-body); }
 .s-miss { background: var(--hit); color: #fff; }
 .s-none { background: var(--none); }
 .kuku { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; }
+.kuku.wide { gap: 2px; }
+.kuku.wide .h { font-size: 10px; }
+.kuku.wide button { border-width: 1.5px; border-radius: 3px; font-size: 0; }
+.kuku .gap { visibility: hidden; }
 .kuku .h {
   display: grid; place-items: center;
   font-family: var(--font-display); font-size: 13px; color: var(--muted);
@@ -344,7 +344,7 @@ button, summary { font-family: var(--font-body); }
 
 /* 横持ち（スマホ・タブレット）：1画面に収め、上から 敵 → 式 → 数字1列。左手が1〜5、右手が6〜0 */
 @media (orientation: landscape) and (pointer: coarse), (orientation: landscape) and (max-height: 520px) {
-  .game { grid-template-columns: minmax(0, 1fr); padding: 8px 12px 16px; gap: 8px; }
+  .game { max-width: 1120px; grid-template-columns: minmax(0, 1fr); padding: 8px 12px 16px; gap: 8px; }
   .hud { flex-wrap: nowrap; gap: 8px 12px; height: 36px; }
   .hud h1 { font-size: 18px; flex-basis: auto; white-space: nowrap; }
   .hud .btn { padding: 4px 10px; white-space: nowrap; }
@@ -378,6 +378,26 @@ button, summary { font-family: var(--font-body); }
   .judge b { font-size: 15px; display: block; margin: 0; }
 }
 
+/* 設定と記録（ゲームとは別の画面） */
+.settings { position: fixed; inset: 0; z-index: 15; background: var(--cobalt-deep); overflow: auto; }
+.settings[hidden] { display: none; }
+.settings-inner { max-width: 1120px; margin: 0 auto; padding: 12px 16px 28px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.settings-head { display: flex; align-items: center; gap: 12px; color: var(--paper); }
+.settings-head h2 { font-family: var(--font-display); font-weight: 400; font-size: 22px; margin: 0 auto 0 0; }
+.settings-head .btn { font-size: 15px; padding: 8px 14px; }
+@media (min-width: 900px) {
+  .settings-inner { grid-template-columns: minmax(0, 420px) minmax(0, 1fr); align-items: start; }
+  .settings-head { grid-column: 1 / -1; }
+}
+.choice { display: flex; flex-wrap: wrap; gap: 8px; }
+.choice .btn { flex: 1 1 110px; padding: 8px 6px; font-size: 14px; box-shadow: 2px 2px 0 var(--ink); }
+.choice .btn[aria-pressed="true"] { background: var(--pop); }
+.choice .btn:disabled { opacity: .55; cursor: not-allowed; }
+.hint { margin: 6px 0 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.icon-btn { display: inline-grid; place-items: center; padding: 5px 8px; }
+.icon-btn svg { width: 20px; height: 20px; display: block; }
+.question.reveal .typed { color: var(--hit); }
+
 /* だれが遊ぶ？ */
 .who {
   position: fixed; inset: 0; z-index: 20;
@@ -387,6 +407,7 @@ button, summary { font-family: var(--font-body); }
   overflow: auto;
 }
 .who[hidden] { display: none; }
+#unlock { z-index: 25; }
 .who-card {
   width: min(100%, 420px);
   background: var(--paper);
@@ -430,6 +451,9 @@ button, summary { font-family: var(--font-body); }
   <header class="hud">
     <h1>九九パンチ</h1>
     <button class="btn" id="whoBtn" type="button">名前をえらぶ</button>
+    <button class="btn icon-btn" id="setBtn" type="button" aria-label="設定と記録" title="設定と記録">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="4.4" stroke-dasharray="3.6 2.84"/><circle cx="12" cy="12" r="5.6" fill="none" stroke="currentColor" stroke-width="3"/></svg>
+    </button>
     <div class="stat">れんぞく <b id="combo">0</b></div>
     <div class="stat">KO <b id="koCount">0</b></div>
     <button class="btn" id="soundBtn" type="button" aria-pressed="true">音 ON</button>
@@ -512,40 +536,72 @@ button, summary { font-family: var(--font-body); }
   <div class="keypad" id="keypad" aria-label="数字ボタン"></div>
   </div>
 
-  <aside class="records">
-    <h2>九九の記録</h2>
-    <div class="legend" id="legend"></div>
-    <div class="kuku" id="kuku" aria-label="九九の表。たてが段、よこがかける数"></div>
-    <p class="detail" id="detail">マスを押すと、その九九の記録が見られます。数字は最近3回の平均秒数です。</p>
-    <div>
-      <h3>にがてな九九</h3>
-      <ul class="weak" id="weak"></ul>
-    </div>
-    <div class="setting">
-      <label for="th">暗記とみなす速さ：<span id="thVal"></span>秒より速い</label>
-      <input id="th" type="range" min="1" max="5" step="0.5">
-    </div>
-    <div class="setting">
-      <h3>出題する段</h3>
-      <div class="dans" id="dans"></div>
-    </div>
-    <p class="worst-line" id="worstLine"></p>
-    <div class="foot">
-      <button class="btn" id="resetBtn" type="button">記録を消す</button>
-      <p>いま遊んでいる人の記録だけ消します（なぐられた回数のワーストも消えます）。記録はこのブラウザの中だけに保存されます。</p>
-    </div>
-    <details class="swap">
-      <summary>敵の画像を自分の絵に差し替える</summary>
-      <div class="swap-body">
-        <label for="imgIdle">通常<input id="imgIdle" type="file" accept="image/*"></label>
-        <label for="imgHit">殴られ顔<input id="imgHit" type="file" accept="image/*"></label>
-        <label for="imgKo">KO<input id="imgKo" type="file" accept="image/*"></label>
-        <button class="btn" id="imgReset" type="button">仮の絵に戻す</button>
-        <p>背景が透明な正方形のPNGがきれいに収まります。通常の1枚だけでも動きます。</p>
-      </div>
-    </details>
-  </aside>
 </main>
+
+<div class="settings" id="settings" role="dialog" aria-modal="true" aria-labelledby="setTitle" hidden>
+  <div class="settings-inner">
+    <header class="settings-head">
+      <h2 id="setTitle">設定と記録</h2>
+      <button class="btn" id="setClose" type="button">ゲームにもどる</button>
+    </header>
+
+    <section class="records">
+      <h2>設定</h2>
+      <div class="setting">
+        <h3>ゲームタイプ</h3>
+        <div class="choice" id="types"></div>
+        <p class="hint" id="typeHint"></p>
+      </div>
+      <div class="setting">
+        <h3>モード</h3>
+        <div class="choice" id="levels"></div>
+        <p class="hint" id="levelHint"></p>
+      </div>
+      <div class="setting">
+        <h3>出題する段</h3>
+        <div class="dans" id="dans"></div>
+      </div>
+      <div class="setting">
+        <label for="th">暗記とみなす速さ：<span id="thVal"></span>秒より速い</label>
+        <input id="th" type="range" min="1" max="5" step="0.5">
+      </div>
+      <details class="swap">
+        <summary>敵の画像を自分の絵に差し替える</summary>
+        <div class="swap-body">
+          <label for="imgIdle">通常<input id="imgIdle" type="file" accept="image/*"></label>
+          <label for="imgHit">殴られ顔<input id="imgHit" type="file" accept="image/*"></label>
+          <label for="imgKo">KO<input id="imgKo" type="file" accept="image/*"></label>
+          <button class="btn" id="imgReset" type="button">仮の絵に戻す</button>
+          <p>背景が透明な正方形のPNGがきれいに収まります。通常の1枚だけでも動きます。</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="records">
+      <h2>九九の記録</h2>
+      <div class="legend" id="legend"></div>
+      <div class="kuku" id="kuku" aria-label="九九の表。たてが段、よこがかける数"></div>
+      <p class="detail" id="detail"></p>
+      <div>
+        <h3>にがてな九九</h3>
+        <ul class="weak" id="weak"></ul>
+      </div>
+      <p class="worst-line" id="worstLine"></p>
+      <div class="foot">
+        <button class="btn" id="resetBtn" type="button">記録を消す</button>
+        <p>いま遊んでいる人の記録だけ消します（なぐられた回数のワーストも消えます。解放したモードは残ります）。記録はこのブラウザの中だけに保存されます。</p>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="who" id="unlock" role="dialog" aria-modal="true" aria-labelledby="unlockTitle" hidden>
+  <div class="who-card">
+    <h2 id="unlockTitle"></h2>
+    <p class="cycle-msg" id="unlockMsg"></p>
+    <button class="btn" id="unlockOk" type="button" style="font-size:18px;padding:12px">OK</button>
+  </div>
+</div>
 
 <div class="who" id="who" role="dialog" aria-modal="true" aria-labelledby="whoTitle">
   <div class="who-card">
@@ -584,16 +640,29 @@ button, summary { font-family: var(--font-body); }
   const M = REDUCED ? 0.25 : 1;           // 演出の強さ。ここを変えると全体の派手さが変わる
 
   const ENEMIES = [
-    { name: 'ねむけ大王',     hp: 60,  shirt: '#ff8a3d', hair: '#2b2140', skin: '#f6c9a0' },
-    { name: '月曜日のあくま', hp: 80,  shirt: '#8e5bff', hair: '#7a1220', skin: '#e9b48a' },
-    { name: 'しめきり番長',   hp: 100, shirt: '#1fb37a', hair: '#14110f', skin: '#f2d3b3' },
+    { name: 'ねむけ大王',     shirt: '#ff8a3d', hair: '#2b2140', skin: '#f6c9a0' },
+    { name: '月曜日のあくま', shirt: '#8e5bff', hair: '#7a1220', skin: '#e9b48a' },
+    { name: 'しめきり番長',   shirt: '#1fb37a', hair: '#14110f', skin: '#f2d3b3' },
+  ];
+  const R = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+  // モードごとに出てくる数（段にも、かける数にも使う）。10は出さない
+  const LEVELS = [
+    { name: 'ふつう',  nums: R(1, 9) },
+    { name: '上級者',  nums: R(1, 9).concat(R(11, 15)) },
+    { name: '地獄',    nums: R(1, 9).concat(R(11, 19)) },
+  ];
+  const TYPES = [
+    ['seq',  'じゅんばん', '有効にした段を、小さい段から順番に出します。敵ひとりが1つの段です。'],
+    ['rand', 'ランダム',   '有効にした段の問題を、ばらばらの順番で出します。1サイクルで全部の問題が1回ずつ出ます。'],
+    ['weak', '弱点',       '有効にした段の中から、にがてな九九ほど多く出します。'],
   ];
   const SFX_JAB = ['ペシ', 'パシ', 'ポコ', 'ビシ'];
   const SFX_HEAVY = ['ドカッ', 'バキッ', 'ボコッ', 'ズドン'];
 
-  let enemyIdx = 0, hp = ENEMIES[0].hp, maxHp = ENEMIES[0].hp;
+  let enemyIdx = 0, hp = 9, maxHp = 9;
   let combo = 0, kos = 0, locked = false, dir = 1;
   let stateTimer = 0;
+  let queue = [], qi = 0, bag = [];   // いまの敵が出す問題と、その何問目か
   let punched = 0;      // このサイクルでなぐられた回数（＝まちがえた回数）
   const images = { idle: null, hit: null, ko: null };
 
@@ -671,8 +740,9 @@ button, summary { font-family: var(--font-body); }
   }
   function loadEnemy() {
     const e = ENEMIES[enemyIdx % ENEMIES.length];
-    maxHp = hp = e.hp + 20 * Math.floor(enemyIdx / ENEMIES.length);
-    $('enemyName').textContent = e.name;
+    queue = buildQueue(); qi = 0;
+    maxHp = hp = queue.length;             // 敵ひとり＝この問題数。正解1回で体力が1へる
+    $('enemyName').textContent = e.name + (data.type === 'seq' ? '（' + queue[0].a + 'の段）' : '');
     $('shirt').setAttribute('fill', e.shirt);
     $('hair').setAttribute('fill', e.hair);
     document.querySelectorAll('.skin').forEach(n => n.setAttribute('fill', e.skin));
@@ -748,19 +818,6 @@ button, summary { font-family: var(--font-body); }
       ], { duration: rand(380, 620), easing: 'cubic-bezier(.1,.7,.3,1)' }).onfinish = () => b.remove();
     }
   }
-  function dmgNumber(pt, n, big) {
-    const el = document.createElement('div');
-    el.className = 'dmg' + (big ? ' big' : '');
-    el.textContent = '-' + n;
-    el.style.left = (pt.x + dir * 40) + 'px'; el.style.top = (pt.y - 30) + 'px';
-    fx.appendChild(el);
-    el.animate([
-      { transform: 'translateY(0) scale(.6)', opacity: 1 },
-      { transform: 'translateY(-24px) scale(1.15)', opacity: 1, offset: 0.3 },
-      { transform: 'translateY(-70px) scale(1)', opacity: 0 },
-    ], { duration: big ? 800 : 520, easing: 'ease-out' }).onfinish = () => el.remove();
-  }
-
   /* ---------- 殴られる（まちがえた時） ---------- */
   let punchTimer = 0;
   function punchPlayer() {
@@ -797,10 +854,10 @@ button, summary { font-family: var(--font-body); }
     }, 90);
   }
 
-  /* ---------- 1サイクル（敵を全員たおす）の結果 ---------- */
+  /* ---------- 1サイクル（有効にした段の数だけ敵と戦う）の結果 ---------- */
   function renderWorst() {
     $('worstLine').textContent = data.worst == null
-      ? '1サイクル（敵を' + ENEMIES.length + '人たおす）でなぐられた回数のワースト：まだ記録なし'
+      ? '1サイクル（有効にした段をひとまわり）でなぐられた回数のワースト：まだ記録なし'
       : '1サイクルでなぐられた回数のワースト：' + data.worst + '回';
   }
   function showCycle() {
@@ -825,6 +882,32 @@ button, summary { font-family: var(--font-body); }
     ], { duration: 380, easing: 'ease-out' });
     locked = false;
   }
+  function afterEnemy() {
+    enemyWrap.getAnimations().forEach(a => a.cancel());
+    enemyIdx++;
+    if (enemyIdx % data.dans.length === 0) showCycle();   // ひとまわりしたら結果を見せる
+    else spawnEnemy();
+  }
+  // まちがえた問題があると体力が残る。そのときは倒せず、敵はにげていく
+  function escapeEnemy() {
+    locked = true;
+    const g = gen;
+    setTimeout(() => {
+      if (g !== gen) return;
+      setState('idle');
+      enemyWrap.animate([
+        { transform: 'translateX(0)' }, { transform: 'translateX(-6%)', offset: 0.2 }, { transform: 'translateX(140%)' },
+      ], { duration: 520, easing: 'ease-in', fill: 'forwards' });
+      koBanner.textContent = 'にげた！';
+      koBanner.animate([
+        { opacity: 0, transform: 'scale(1.6) rotate(-8deg)' },
+        { opacity: 1, transform: 'scale(.62) rotate(-8deg)', offset: 0.15 },
+        { opacity: 1, transform: 'scale(.64) rotate(-8deg)', offset: 0.85 },
+        { opacity: 0, transform: 'scale(.66) rotate(-8deg)' },
+      ], { duration: 760, delay: 200, easing: 'ease-out' });
+    }, 380);
+    setTimeout(() => { if (g === gen) afterEnemy(); }, 1450);
+  }
   $('cycleNext').addEventListener('click', () => {
     $('cycle').hidden = true;
     punched = 0; paused = false;
@@ -834,15 +917,13 @@ button, summary { font-family: var(--font-body); }
   /* ---------- 殴る ---------- */
   function hit(heavy) {
     dir = -dir;
-    const dmg = heavy ? 10 + Math.round(Math.min(combo, 15) / 3) : 4;
-    hp -= dmg; renderHp();
+    hp -= 1; renderHp();
     const ko = hp <= 0, pt = hitPoint(), p = ko ? 1.4 : heavy ? 1 : 0.35;
 
     enemy.style.setProperty('--tilt', (dir * (heavy ? 13 : 7)) + 'deg');
     setState(ko ? 'ko' : 'hit');
     clearTimeout(stateTimer);
     spark(pt, heavy || ko);
-    dmgNumber(pt, dmg, heavy || ko);
     thump(Math.min(p, 1));
 
     if (!heavy && !ko) {                  // ジャブ：即座に軽く
@@ -878,6 +959,7 @@ button, summary { font-family: var(--font-body); }
     kos++; renderStats(false);
     setTimeout(() => thump(1), 90);
     const d = dir, g = gen;
+    koBanner.textContent = 'K.O.!';
     // 画面の奥（消失点）へ飛んでいって星になる
     const sr = stage.getBoundingClientRect(), wr = enemyWrap.getBoundingClientRect();
     const star = { x: sr.width * (0.5 + d * 0.2), y: sr.height * 0.34 };          // 星になる位置（ステージ内）
@@ -898,10 +980,7 @@ button, summary { font-family: var(--font-body); }
     ], { duration: 760, delay: FLY + 40, easing: 'ease-out' });   // 星になってから出す
     setTimeout(() => {
       if (g !== gen) return;               // 途中で交代していたら何もしない
-      enemyWrap.getAnimations().forEach(a => a.cancel());
-      enemyIdx++;
-      if (enemyIdx % ENEMIES.length === 0) showCycle();   // 全員たおしたら結果を見せる
-      else spawnEnemy();
+      afterEnemy();
     }, 1650);
   }
 
@@ -912,13 +991,16 @@ button, summary { font-family: var(--font-body); }
   const RECENT = 3;     // 判定に使う直近の回数
   const TOO_LONG = 30000; // これより長い回答は席を外したとみなして記録しない
   const ALL_DANS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null });
+  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0 });
   function clean(p) {            // 保存データが壊れていても動くように整える
     if (!p || typeof p !== 'object') return null;
     const out = newProfile(String(p.name || 'プレイヤー').slice(0, 8));
     if (p.id) out.id = String(p.id);
     if (p.th >= 1000 && p.th <= 5000) out.th = p.th;
-    if (Array.isArray(p.dans)) { const d = p.dans.filter(n => n >= 1 && n <= 9); if (d.length) out.dans = d; }
+    if (p.unlocked === 1 || p.unlocked === 2) out.unlocked = p.unlocked;
+    if (p.level === 1 || p.level === 2) out.level = Math.min(p.level, out.unlocked);
+    if (TYPES.some(t => t[0] === p.type)) out.type = p.type;
+    if (Array.isArray(p.dans)) { const d = LEVELS[out.level].nums.filter(n => p.dans.includes(n)); if (d.length) out.dans = d; }
     if (p.cells && typeof p.cells === 'object') out.cells = p.cells;
     if (Number.isInteger(p.worst) && p.worst >= 0) out.worst = p.worst;
     return out;
@@ -961,12 +1043,15 @@ button, summary { font-family: var(--font-body); }
   let selected = null;
   function renderRecords() {
     const count = { memo: 0, think: 0, miss: 0, none: 0 }, weak = [];
+    const N = nums();
     const grid = $('kuku'); grid.textContent = '';
+    grid.style.gridTemplateColumns = `repeat(${N.length + 1}, minmax(0, 1fr))`;
+    grid.classList.toggle('wide', N.length > 9);        // マスが多い時は色だけにして、数字は押して見る
     const head = t => { const d = document.createElement('div'); d.className = 'h'; d.textContent = t; grid.appendChild(d); };
-    head('×'); for (let b = 1; b <= 9; b++) head(b);
-    for (let a = 1; a <= 9; a++) {
+    head('×'); N.forEach(head);
+    for (const a of N) {
       head(a);
-      for (let b = 1; b <= 9; b++) {
+      for (const b of N) {
         const i = cellInfo(a, b); count[i.s]++;
         if (i.s === 'miss' || i.s === 'think') weak.push({ a, b, i });
         const el = document.createElement('button');
@@ -983,29 +1068,55 @@ button, summary { font-family: var(--font-body); }
     weak.sort((x, y) => (y.i.s === 'miss') - (x.i.s === 'miss') || y.i.avg - x.i.avg);
     $('weak').innerHTML = weak.length
       ? weak.slice(0, 6).map(w => `<li class="s-${w.i.s}">${w.a}×${w.b}　${sec(w.i.avg)}秒</li>`).join('')
-      : `<li class="empty">${count.none === 81 ? '遊ぶとここに出てきます。' : 'いまはありません。すごい！'}</li>`;
+      : `<li class="empty">${count.none === N.length * N.length ? '遊ぶとここに出てきます。' : 'いまはありません。すごい！'}</li>`;
     if (selected) {
       const [a, b] = selected.split('x').map(Number), i = cellInfo(a, b);
       $('detail').innerHTML = `<b>${a} × ${b} = ${a * b}</b>　${LABEL[i.s]}<br>` + (i.n
         ? `最近の平均 ${sec(i.avg)}秒 ／ 挑戦 ${i.n}回 ／ まちがい ${i.miss}回`
         : 'まだ出題されていません。');
+    } else {
+      $('detail').textContent = 'マスを押すと、その九九の記録が見られます。' + (N.length > 9 ? '' : '数字は最近3回の平均秒数です。');
     }
     $('thVal').textContent = sec(data.th);
   }
 
   /* ---------- 出題 ---------- */
-  let q = { a: 1, b: 1 }, typed = '', missed = false, qStart = 0, qValid = true;
+  let q = { a: 1, b: 1 }, typed = '', qStart = 0, qValid = true;
   const WEIGHT = { none: 3, miss: 6, think: 4, memo: 1 };   // にがてなマスほど出やすい
+  const nums = () => LEVELS[data.level].nums;
+  // 敵ひとりぶんの問題を作る。数は「かける数」の個数（ふつう9／上級者14／地獄18）
+  function buildQueue() {
+    const N = nums(), dans = data.dans.slice().sort((x, y) => x - y);
+    if (data.type === 'seq') {
+      const a = dans[enemyIdx % dans.length];
+      return N.map(b => ({ a, b }));
+    }
+    if (data.type === 'rand') {                 // 全部の問題をまぜた山から、上から順に取る
+      if (bag.length < N.length) {
+        bag = [];
+        dans.forEach(a => N.forEach(b => bag.push({ a, b })));
+        for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [bag[i], bag[j]] = [bag[j], bag[i]]; }
+      }
+      return bag.splice(0, N.length);
+    }
+    const pool = [], out = [];                  // 弱点：にがてなマスほど選ばれやすい（同じ敵の中では重ならない）
+    dans.forEach(a => N.forEach(b => pool.push({ a, b, w: WEIGHT[cellInfo(a, b).s] })));
+    while (out.length < N.length && pool.length) {
+      let r = Math.random() * pool.reduce((t, p) => t + p.w, 0);
+      let i = pool.findIndex(p => (r -= p.w) < 0);
+      if (i < 0) i = pool.length - 1;
+      out.push(pool.splice(i, 1)[0]);
+    }
+    return out;
+  }
   function nextQuestion() {
-    const pool = [];
-    data.dans.forEach(a => { for (let b = 1; b <= 9; b++) if (!(a === q.a && b === q.b)) pool.push({ a, b, w: WEIGHT[cellInfo(a, b).s] }); });
-    let r = Math.random() * pool.reduce((t, p) => t + p.w, 0);
-    q = pool.find(p => (r -= p.w) < 0) || pool[pool.length - 1];
-    typed = ''; missed = false; qValid = !document.hidden; qStart = performance.now();
+    q = queue[qi++];
+    typed = ''; qValid = !document.hidden; qStart = performance.now();
     renderQuestion();
   }
-  function renderQuestion() {
-    $('question').innerHTML = `${q.a} × ${q.b} = <span class="typed">${typed}</span><span class="caret">?</span>`;
+  function renderQuestion(reveal) {
+    $('question').classList.toggle('reveal', !!reveal);
+    $('question').innerHTML = `${q.a} × ${q.b} = <span class="typed">${typed}</span>` + (reveal ? '' : '<span class="caret">?</span>');
   }
   function judge(cls, head, text) {
     const j = $('judge'); j.className = 'judge ' + cls;
@@ -1013,36 +1124,42 @@ button, summary { font-family: var(--font-body); }
     j.animate([{ transform: 'scale(1.25)' }, { transform: 'scale(1)' }], { duration: 160 });
   }
   document.addEventListener('visibilitychange', () => { if (document.hidden) qValid = false; });
+  // 次の問題へ。この敵の問題を出し切っていたら、敵はにげていく（全問正解ならその前にKOしている）
+  function advance() {
+    if (qi < queue.length) nextQuestion(); else escapeEnemy();
+  }
 
   function handleDigit(d) {
     if (locked || paused) return;
     ac();
     const ans = String(q.a * q.b);
-    if (!ans.startsWith(typed + d)) {            // まちがい：答えを見せて打ち直し
-      missed = true; typed = ''; combo = 0; renderStats(false); blip(); renderQuestion();
-      punched++; punchPlayer();
-      judge('miss', 'ちがうよ', `こたえは ${ans}。打ってみよう`);
+    const ms = performance.now() - qStart;
+    const counted = qValid && ms < TOO_LONG;
+    if (!ans.startsWith(typed + d)) {            // まちがい：殴られて、答えを見せてから次の問題へ
+      if (counted) record(q.a, q.b, ms, false);
+      combo = 0; punched++; renderStats(false); blip(); punchPlayer();
+      typed = ans; renderQuestion(true);
+      judge('miss', 'ちがうよ', `${q.a} × ${q.b} = ${ans}`);
       $('question').animate([
         { transform: 'translateX(-8px)' }, { transform: 'translateX(8px)' },
         { transform: 'translateX(-4px)' }, { transform: 'translateX(0)' },
       ], { duration: 160 });
+      locked = true;
+      const g = gen;
+      setTimeout(() => { if (g !== gen) return; locked = false; advance(); }, 800);
       return;
     }
     typed += d; renderQuestion();
     if (typed !== ans) return;
 
-    const ms = performance.now() - qStart;
-    const counted = qValid && ms < TOO_LONG;
-    if (counted) record(q.a, q.b, ms, !missed);
-    const fast = !missed && ms < data.th;
-    if (missed) judge('miss', 'つぎは一発で', `${q.a} × ${q.b} = ${ans}`);
-    else if (fast) judge('memo', '暗記！', `${sec(ms)}秒`);
+    if (counted) record(q.a, q.b, ms, true);
+    const fast = ms < data.th;
+    if (fast) judge('memo', '暗記！', `${sec(ms)}秒`);
     else judge('think', '考えた', `${sec(ms)}秒` + (counted ? '' : '（記録なし）'));
-    if (!missed) { combo++; renderStats(true); }
-    renderRecords();
+    combo++; renderStats(true);
     const ko = hit(fast);
-    if (ko || hp <= 0) { locked = true; return; }
-    nextQuestion();
+    if (ko) locked = true; else advance();
+    checkUnlock();
   }
   document.addEventListener('keydown', e => {
     if (paused || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1058,12 +1175,68 @@ button, summary { font-family: var(--font-body); }
     $('keypad').appendChild(b);
   });
 
-  /* ---------- 設定 ---------- */
-  $('th').value = data.th / 1000;
-  $('th').addEventListener('input', e => { data.th = Number(e.target.value) * 1000; save(); renderRecords(); });
-  function renderDans() {
+  /* ---------- モードの解放 ---------- */
+  // そのモードの表のうち、まだ「暗記」になっていないマスの数
+  function memoLeft(level) {
+    const N = LEVELS[level].nums; let n = 0;
+    N.forEach(a => N.forEach(b => { if (cellInfo(a, b).s !== 'memo') n++; }));
+    return n;
+  }
+  function checkUnlock() {
+    if (data.unlocked >= LEVELS.length - 1 || memoLeft(data.unlocked) > 0) return;
+    data.unlocked++; save();
+    const L = LEVELS[data.unlocked], from = L.nums[LEVELS[data.unlocked - 1].nums.length];
+    $('unlockTitle').textContent = L.name + 'モード 解放！';
+    $('unlockMsg').textContent = `ぜんぶ暗記の速さでクリア！ ${from}〜${L.nums[L.nums.length - 1]} が出せるようになりました。歯車ボタンの「モード」で切りかえられます。`;
+    paused = true;
+    $('unlock').hidden = false;
+    try { $('unlockOk').focus({ preventScroll: true }); } catch (e) {}
+  }
+  $('unlockOk').addEventListener('click', () => {
+    $('unlock').hidden = true;
+    paused = !$('cycle').hidden || !$('settings').hidden;
+    qValid = false;                               // 止まっていた問題の時間は記録しない
+    if (!$('settings').hidden) renderSettings();
+  });
+
+  /* ---------- 設定と記録の画面 ---------- */
+  let dirty = false;      // 出題にかかわる設定を変えたら、もどる時に最初からやり直す
+  function renderSettings() {
+    const pick = (box, label, on, fn, disabled) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'btn'; b.textContent = label;
+      b.setAttribute('aria-pressed', String(on));
+      b.disabled = !!disabled;
+      b.addEventListener('click', fn);
+      box.appendChild(b);
+    };
+    const types = $('types'); types.textContent = '';
+    TYPES.forEach(([k, label]) => pick(types, label, data.type === k, () => {
+      if (data.type === k) return;
+      data.type = k; dirty = true; save(); renderSettings();
+    }));
+    $('typeHint').textContent = TYPES.find(t => t[0] === data.type)[2];
+
+    const levels = $('levels'); levels.textContent = '';
+    LEVELS.forEach((L, i) => pick(levels, (i > data.unlocked ? '🔒 ' : '') + L.name, data.level === i, () => {
+      if (data.level === i) return;
+      const before = nums();
+      data.level = i;
+      // 上のモードにしたら新しい段は有効にしておく。下げたら、そのモードにない段は外す
+      data.dans = L.nums.filter(n => data.dans.includes(n) || !before.includes(n));
+      if (!data.dans.length) data.dans = L.nums.slice();
+      dirty = true; selected = null; save(); renderSettings(); renderRecords();
+    }, i > data.unlocked));
+    const n = nums().length;
+    let hint = `いまは「${LEVELS[data.level].name}」：敵ひとりにつき${n}問（かける数は ${data.level ? '1〜9 と 11〜' + nums()[n - 1] : '1〜9'}）。`;
+    if (data.unlocked < LEVELS.length - 1) {
+      const nx = LEVELS[data.unlocked + 1], cur = LEVELS[data.unlocked];
+      hint += `「${cur.name}」の${cur.nums.length * cur.nums.length}問をぜんぶ「暗記」の速さにすると「${nx.name}」が解放されます（あと${memoLeft(data.unlocked)}問）。`;
+    }
+    $('levelHint').textContent = hint;
+
     const box = $('dans'); box.textContent = '';
-    for (let a = 1; a <= 9; a++) {
+    nums().forEach(a => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'btn'; b.textContent = a;
       b.setAttribute('aria-label', a + 'の段');
@@ -1071,13 +1244,29 @@ button, summary { font-family: var(--font-body); }
       b.addEventListener('click', () => {
         const on = data.dans.includes(a);
         if (on && data.dans.length === 1) return;          // 1つは残す
-        data.dans = on ? data.dans.filter(x => x !== a) : data.dans.concat(a).sort();
-        save(); renderDans();
-        if (!data.dans.includes(q.a) && !locked) nextQuestion();
+        data.dans = on ? data.dans.filter(x => x !== a) : data.dans.concat(a).sort((x, y) => x - y);
+        dirty = true; save(); renderSettings();
       });
       box.appendChild(b);
-    }
+    });
+    $('th').value = data.th / 1000;
+    $('thVal').textContent = sec(data.th);
   }
+  $('th').addEventListener('input', e => { data.th = Number(e.target.value) * 1000; save(); renderRecords(); renderSettings(); });
+  $('setBtn').addEventListener('click', () => {
+    if (!$('who').hidden) return;
+    paused = true; dirty = false;
+    renderSettings(); renderRecords(); renderWorst();
+    $('settings').hidden = false;
+    $('settings').scrollTop = 0;
+    try { $('setClose').focus({ preventScroll: true }); } catch (e) {}
+  });
+  $('setClose').addEventListener('click', () => {
+    $('settings').hidden = true;
+    paused = false; qValid = false;
+    if (dirty) restartRun();
+    checkUnlock();                                // 「暗記とみなす速さ」を変えて条件を満たした場合
+  });
   let resetArmed = 0;
   $('resetBtn').addEventListener('click', e => {
     const btn = e.currentTarget;
@@ -1087,7 +1276,7 @@ button, summary { font-family: var(--font-body); }
       return;
     }
     clearTimeout(resetArmed); resetArmed = 0; btn.textContent = '記録を消す';
-    data.cells = {}; data.worst = null; selected = null; save(); renderRecords(); renderWorst();
+    data.cells = {}; data.worst = null; selected = null; save(); renderRecords(); renderWorst(); renderSettings();
     $('detail').textContent = '記録を消しました。ワースト記録も消えました。';
   });
 
@@ -1098,18 +1287,21 @@ button, summary { font-family: var(--font-body); }
     for (let a = 1; a <= 9; a++) for (let b = 1; b <= 9; b++) if (cellInfo(a, b, p).s === 'memo') n++;
     return n;
   }
-  function startAs(p) {
-    data = p; store.last = p.id; save();
-    gen++; paused = false; locked = false; combo = 0; kos = 0; enemyIdx = 0; selected = null; punched = 0;
-    $('cycle').hidden = true;
+  // 最初の敵からやり直す（遊ぶ人をえらんだ時、出題の設定を変えた時）
+  function restartRun() {
+    gen++; locked = false; combo = 0; kos = 0; enemyIdx = 0; punched = 0; bag = [];
     clearTimeout(stateTimer);
     enemyWrap.getAnimations().forEach(a => a.cancel());
-    $('who').hidden = true;
-    $('whoBtn').textContent = p.name + '｜交代';
-    $('th').value = p.th / 1000;
-    $('detail').textContent = 'マスを押すと、その九九の記録が見られます。数字は最近3回の平均秒数です。';
+    $('cycle').hidden = true;
     $('judge').className = 'judge'; $('judge').textContent = HINT;
-    loadEnemy(); renderDans(); renderRecords(); renderWorst(); renderStats(false); nextQuestion();
+    loadEnemy(); renderStats(false); nextQuestion();
+  }
+  function startAs(p) {
+    data = p; store.last = p.id; save();
+    paused = false; selected = null;
+    $('who').hidden = true; $('settings').hidden = true;
+    $('whoBtn').textContent = p.name + '｜交代';
+    restartRun();
   }
   function openWho() {
     paused = true;
@@ -1184,7 +1376,7 @@ button, summary { font-family: var(--font-body); }
   });
 
   // 開始時は必ず名前を選ぶ。後ろには前回の人の記録を表示しておく
-  loadEnemy(); renderDans(); renderRecords(); renderWorst(); renderStats(false); nextQuestion();
+  loadEnemy(); renderStats(false); nextQuestion();
   openWho();
 })();
 </script>
