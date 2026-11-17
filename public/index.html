@@ -129,21 +129,6 @@ button, summary { font-family: var(--font-body); }
   font-size: 18px;
   text-shadow: 2px 2px 0 var(--ink);
 }
-.hp {
-  height: 18px;
-  border: 3px solid var(--ink);
-  border-radius: 6px;
-  background: var(--ink);
-  overflow: hidden;
-  position: relative;
-}
-.hp i {
-  position: absolute; inset: 0;
-  transform-origin: left center;
-  display: block;
-}
-#hpLag { background: var(--paper); transition: transform .5s .15s ease-out; }
-#hpBar { background: var(--hit); transition: transform .08s linear; }
 
 .enemy-wrap {
   position: absolute;
@@ -360,7 +345,6 @@ button, summary { font-family: var(--font-body); }
   }
   .stage { height: auto; min-height: 0; }
   .enemy-wrap { height: min(82%, 560px); }
-  .enemy-info { right: auto; width: min(38%, 300px); }   /* 低い画面で頭が体力バーに重ならないよう左上に寄せる */
   .panel { padding: 6px 12px; }
   .question { font-size: clamp(34px, 11vh, 72px); white-space: nowrap; }
   .keypad {
@@ -464,7 +448,6 @@ button, summary { font-family: var(--font-body); }
     <div class="burst" id="burst"></div>
     <div class="enemy-info">
       <div class="enemy-name" id="enemyName">ねむけ大王</div>
-      <div class="hp" role="img" aria-label="敵の体力"><i id="hpLag"></i><i id="hpBar"></i></div>
     </div>
 
     <div class="enemy-wrap" id="enemyWrap">
@@ -659,7 +642,7 @@ button, summary { font-family: var(--font-body); }
   const SFX_JAB = ['ペシ', 'パシ', 'ポコ', 'ビシ'];
   const SFX_HEAVY = ['ドカッ', 'バキッ', 'ボコッ', 'ズドン'];
 
-  let enemyIdx = 0, hp = 9, maxHp = 9;
+  let enemyIdx = 0;
   let combo = 0, kos = 0, locked = false, dir = 1;
   let stateTimer = 0;
   let queue = [], qi = 0, bag = [];   // いまの敵が出す問題と、その何問目か
@@ -730,10 +713,6 @@ button, summary { font-family: var(--font-body); }
       enemy.classList.toggle('fallback-hit', s !== 'idle' && !images[s]);
     }
   }
-  function renderHp() {
-    const r = Math.max(0, hp) / maxHp;
-    $('hpBar').style.transform = $('hpLag').style.transform = 'scaleX(' + r + ')';
-  }
   function renderStats(bump) {
     const c = $('combo'); c.textContent = combo; $('koCount').textContent = kos;
     if (bump && combo > 1) c.animate([{ transform: 'scale(1.5)' }, { transform: 'scale(1)' }], { duration: 140 });
@@ -741,12 +720,11 @@ button, summary { font-family: var(--font-body); }
   function loadEnemy() {
     const e = ENEMIES[enemyIdx % ENEMIES.length];
     queue = buildQueue(); qi = 0;
-    maxHp = hp = queue.length;             // 敵ひとり＝この問題数。正解1回で体力が1へる
     $('enemyName').textContent = e.name + (data.type === 'seq' ? '（' + queue[0].a + 'の段）' : '');
     $('shirt').setAttribute('fill', e.shirt);
     $('hair').setAttribute('fill', e.hair);
     document.querySelectorAll('.skin').forEach(n => n.setAttribute('fill', e.skin));
-    setState('idle'); renderHp();
+    setState('idle');
   }
 
   /* ---------- 殴られ演出の部品 ---------- */
@@ -819,8 +797,33 @@ button, summary { font-family: var(--font-body); }
     }
   }
   /* ---------- 殴られる（まちがえた時） ---------- */
+  function floatText(x, y, text, big) {
+    const el = document.createElement('div');
+    el.className = 'dmg' + (big ? ' big' : '');
+    el.textContent = text;
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    fx.appendChild(el);
+    el.animate([
+      { transform: 'translateY(0) scale(.6)', opacity: 1 },
+      { transform: 'translateY(-14px) scale(1.15)', opacity: 1, offset: 0.3 },
+      { transform: 'translateY(-44px) scale(1)', opacity: 0 },
+    ], { duration: big ? 800 : 520, easing: 'ease-out' }).onfinish = () => el.remove();
+  }
+  // 速く答えてまちがえた時：こちらのパンチをかわされて、カウンターをもらう
+  function counterPunch() {
+    dir = -dir;
+    const d = dir, g = gen, pt = hitPoint();
+    enemyWrap.animate([
+      { transform: 'translate(0,0) rotate(0deg)' },
+      { transform: `translate(${d * 52 * M}px,8px) rotate(${d * 15 * M}deg)`, offset: 0.25 },
+      { transform: `translate(${d * 52 * M}px,8px) rotate(${d * 15 * M}deg)`, offset: 0.6 },
+      { transform: 'translate(0,0) rotate(0deg)' },
+    ], { duration: 460, easing: 'ease-out' });
+    floatText(pt.x - d * 50, pt.y, 'スカッ', false);
+    setTimeout(() => { if (g === gen) punchPlayer(true); }, 190);
+  }
   let punchTimer = 0;
-  function punchPlayer() {
+  function punchPlayer(counter) {
     const skin = ENEMIES[enemyIdx % ENEMIES.length].skin;
     const el = document.createElement('div');
     el.className = 'punch';
@@ -843,8 +846,9 @@ button, summary { font-family: var(--font-body); }
     clearTimeout(punchTimer);
     punchTimer = setTimeout(() => enemy.classList.remove('punching'), 430);
     setTimeout(() => {                               // 当たった瞬間
-      thump(0.8); shake(0.9);
+      thump(counter ? 1 : 0.8); shake(counter ? 1.3 : 0.9);
       const r = stage.getBoundingClientRect();
+      if (counter) floatText(r.width / 2, r.height * 0.24, 'カウンター！', true);
       spark({ x: r.width * rand(0.3, 0.7), y: r.height * rand(0.3, 0.6) }, true);
       if (!REDUCED) {
         const o = document.createElement('div');
@@ -888,26 +892,6 @@ button, summary { font-family: var(--font-body); }
     if (enemyIdx % data.dans.length === 0) showCycle();   // ひとまわりしたら結果を見せる
     else spawnEnemy();
   }
-  // まちがえた問題があると体力が残る。そのときは倒せず、敵はにげていく
-  function escapeEnemy() {
-    locked = true;
-    const g = gen;
-    setTimeout(() => {
-      if (g !== gen) return;
-      setState('idle');
-      enemyWrap.animate([
-        { transform: 'translateX(0)' }, { transform: 'translateX(-6%)', offset: 0.2 }, { transform: 'translateX(140%)' },
-      ], { duration: 520, easing: 'ease-in', fill: 'forwards' });
-      koBanner.textContent = 'にげた！';
-      koBanner.animate([
-        { opacity: 0, transform: 'scale(1.6) rotate(-8deg)' },
-        { opacity: 1, transform: 'scale(.62) rotate(-8deg)', offset: 0.15 },
-        { opacity: 1, transform: 'scale(.64) rotate(-8deg)', offset: 0.85 },
-        { opacity: 0, transform: 'scale(.66) rotate(-8deg)' },
-      ], { duration: 760, delay: 200, easing: 'ease-out' });
-    }, 380);
-    setTimeout(() => { if (g === gen) afterEnemy(); }, 1450);
-  }
   $('cycleNext').addEventListener('click', () => {
     $('cycle').hidden = true;
     punched = 0; paused = false;
@@ -917,8 +901,7 @@ button, summary { font-family: var(--font-body); }
   /* ---------- 殴る ---------- */
   function hit(heavy) {
     dir = -dir;
-    hp -= 1; renderHp();
-    const ko = hp <= 0, pt = hitPoint(), p = ko ? 1.4 : heavy ? 1 : 0.35;
+    const ko = qi >= queue.length, pt = hitPoint(), p = ko ? 1.4 : heavy ? 1 : 0.35;
 
     enemy.style.setProperty('--tilt', (dir * (heavy ? 13 : 7)) + 'deg');
     setState(ko ? 'ko' : 'hit');
@@ -959,7 +942,6 @@ button, summary { font-family: var(--font-body); }
     kos++; renderStats(false);
     setTimeout(() => thump(1), 90);
     const d = dir, g = gen;
-    koBanner.textContent = 'K.O.!';
     // 画面の奥（消失点）へ飛んでいって星になる
     const sr = stage.getBoundingClientRect(), wr = enemyWrap.getBoundingClientRect();
     const star = { x: sr.width * (0.5 + d * 0.2), y: sr.height * 0.34 };          // 星になる位置（ステージ内）
@@ -1124,9 +1106,9 @@ button, summary { font-family: var(--font-body); }
     j.animate([{ transform: 'scale(1.25)' }, { transform: 'scale(1)' }], { duration: 160 });
   }
   document.addEventListener('visibilitychange', () => { if (document.hidden) qValid = false; });
-  // 次の問題へ。この敵の問題を出し切っていたら、敵はにげていく（全問正解ならその前にKOしている）
+  // まちがえた後に次へ進む。それがこの敵の最後の問題だったら、とどめの一発でぶっ飛ばす
   function advance() {
-    if (qi < queue.length) nextQuestion(); else escapeEnemy();
+    if (qi < queue.length) nextQuestion(); else { locked = true; hit(true); }
   }
 
   function handleDigit(d) {
@@ -1137,16 +1119,18 @@ button, summary { font-family: var(--font-body); }
     const counted = qValid && ms < TOO_LONG;
     if (!ans.startsWith(typed + d)) {            // まちがい：殴られて、答えを見せてから次の問題へ
       if (counted) record(q.a, q.b, ms, false);
-      combo = 0; punched++; renderStats(false); blip(); punchPlayer();
+      const hasty = ms < data.th;                // 速く答えてまちがえた
+      combo = 0; punched++; renderStats(false); blip();
+      if (hasty) counterPunch(); else punchPlayer();
       typed = ans; renderQuestion(true);
-      judge('miss', 'ちがうよ', `${q.a} × ${q.b} = ${ans}`);
+      judge('miss', hasty ? 'カウンター！' : 'ちがうよ', `${q.a} × ${q.b} = ${ans}`);
       $('question').animate([
         { transform: 'translateX(-8px)' }, { transform: 'translateX(8px)' },
         { transform: 'translateX(-4px)' }, { transform: 'translateX(0)' },
       ], { duration: 160 });
       locked = true;
       const g = gen;
-      setTimeout(() => { if (g !== gen) return; locked = false; advance(); }, 800);
+      setTimeout(() => { if (g !== gen) return; locked = false; advance(); }, hasty ? 1000 : 800);
       return;
     }
     typed += d; renderQuestion();
