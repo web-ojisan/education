@@ -448,6 +448,14 @@ button, summary { font-family: var(--font-body); }
 }
 .who-row .pick.last { background: var(--pop); }
 .who-row .pick span { overflow-wrap: anywhere; }
+.who-row .pick .nm { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.who-row .pick .sum { font-family: var(--font-body); font-size: 11px; font-weight: 700; color: var(--muted); line-height: 1.35; }
+.who-row .gear { box-shadow: 2px 2px 0 var(--ink); padding: 4px 9px; }
+#rotate { z-index: 40; }
+.rotate-pic { width: 120px; height: 120px; margin: 0 auto; display: block; }
+.rotate-pic .ph { transform-origin: 60px 60px; animation: tilt 2.2s ease-in-out infinite; }
+@keyframes tilt { 0%, 25% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
+@media (prefers-reduced-motion: reduce) { .rotate-pic .ph { animation: none; transform: rotate(-90deg); } }
 .who-row .pick small { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .who-row .del { font-size: 12px; padding: 4px 10px; box-shadow: 2px 2px 0 var(--ink); }
 .who-form label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
@@ -637,6 +645,17 @@ button, summary { font-family: var(--font-body); }
     <h2 id="unlockTitle"></h2>
     <p class="cycle-msg" id="unlockMsg"></p>
     <button class="btn" id="unlockOk" type="button" style="font-size:18px;padding:12px">OK</button>
+  </div>
+</div>
+
+<div class="who" id="rotate" role="alertdialog" aria-modal="true" aria-labelledby="rotateTitle" hidden>
+  <div class="who-card">
+    <h2 id="rotateTitle">よこむきにしてね</h2>
+    <svg class="rotate-pic" viewBox="0 0 120 120" aria-hidden="true">
+      <g class="ph"><rect x="38" y="16" width="44" height="88" rx="8" fill="#fffdf5" stroke="#14110f" stroke-width="5"/><circle cx="60" cy="94" r="3.5" fill="#14110f"/></g>
+    </svg>
+    <p class="cycle-msg">このゲームは、よこむきで遊ぶのがおすすめです。<br>よこにすると、この画面は消えます。</p>
+    <button class="btn" id="rotateSkip" type="button" style="font-size:14px;padding:8px">たてのまま遊ぶ</button>
   </div>
 </div>
 
@@ -1489,7 +1508,7 @@ button, summary { font-family: var(--font-body); }
   $('th').addEventListener('input', e => { data.th = Number(e.target.value) * 1000; save(); renderRecords(); renderSettings(); });
   // ゲームにもどる時：ほかの画面が出ていなければ再開する
   function resume() {
-    paused = ['who', 'settings', 'cycle', 'unlock', 'pin', 'lockWarn'].some(id => !$(id).hidden);
+    paused = ['who', 'settings', 'cycle', 'unlock', 'pin', 'lockWarn', 'rotate'].some(id => !$(id).hidden);
     qValid = false;                               // 止まっていた問題の時間は記録しない
     if (!paused && !locked) recount();            // 問題の途中で止めていた時（演出の途中なら、その流れが自分で数える）
   }
@@ -1550,8 +1569,10 @@ button, summary { font-family: var(--font-body); }
   $('lockWarnCancel').addEventListener('click', () => { $('lockWarn').hidden = true; });
   $('lockWarnOk').addEventListener('click', () => { $('lockWarn').hidden = true; setLock(); });
 
-  $('setBtn').addEventListener('click', async () => {
-    if (!$('who').hidden || pinResolve) return;
+  // 設定と記録の画面を開く。fromWho=true は名前えらびの画面から（その人の設定を、遊ぶ前に見る）
+  let setFromWho = false;
+  async function openSettings(fromWho) {
+    if (pinResolve || !$('settings').hidden) return;
     paused = true;
     if (data.lock) {                               // ロック中はパスワードが合うまで開かない
       let note = '';
@@ -1562,15 +1583,21 @@ button, summary { font-family: var(--font-body); }
         note = 'パスワードがちがいます。';
       }
     }
+    setFromWho = !!fromWho;
     dirty = false; selected = null;
     recHole = data.form === 'hole';                // いま遊んでいる形の表を先に見せる
     renderSettings(); renderRecords(); renderWorst();
+    $('setTitle').textContent = fromWho ? data.name + 'の設定と記録' : '設定と記録';
+    $('setClose').textContent = fromWho ? '名前えらびにもどる' : 'ゲームにもどる';
+    $('who').hidden = true;
     $('settings').hidden = false;
     $('settings').scrollTop = 0;
     try { $('setClose').focus({ preventScroll: true }); } catch (e) {}
-  });
+  }
+  $('setBtn').addEventListener('click', () => { if ($('who').hidden) openSettings(false); });
   $('setClose').addEventListener('click', () => {
     $('settings').hidden = true;
+    if (setFromWho) { openWho(); return; }        // 遊ぶ人をえらぶと、最初の敵から始まる
     if (dirty) { paused = false; restartRun(); } else resume();
     checkUnlock();                                // 「暗記とみなす速さ」を変えて条件を満たした場合
   });
@@ -1610,6 +1637,18 @@ button, summary { font-family: var(--font-body); }
     $('whoBtn').textContent = p.name + '｜交代';
     restartRun();
   }
+  // 名前の下に出す、その人の設定のまとめ
+  function summary(p) {
+    const N = LEVELS[p.level].nums;
+    const dans = p.dans.length === N.length ? 'ぜんぶの段' : p.dans.join('・') + 'の段';
+    return [
+      TYPES.find(t => t[0] === p.type)[1],
+      p.form === 'norm' ? '' : FORMS.find(f => f[0] === p.form)[1],
+      p.level ? LEVELS[p.level].name : '',
+      dans,
+      p.lock ? '🔒' : '',
+    ].filter(Boolean).join('｜');
+  }
   function openWho() {
     paused = true;
     const list = $('whoList'); list.textContent = '';
@@ -1617,10 +1656,18 @@ button, summary { font-family: var(--font-body); }
       const row = document.createElement('div'); row.className = 'who-row';
       const pick = document.createElement('button');
       pick.type = 'button'; pick.className = 'btn pick' + (p.id === store.last ? ' last' : '');
-      const nm = document.createElement('span'); nm.textContent = p.name;
+      const nm = document.createElement('span'); nm.className = 'nm';
+      const name = document.createElement('span'); name.textContent = p.name;
+      const sum = document.createElement('span'); sum.className = 'sum'; sum.textContent = summary(p);
+      nm.append(name, sum);
       const info = document.createElement('small'); info.textContent = '暗記 ' + memoCount(p) + '/81';
       pick.append(nm, info);
       pick.addEventListener('click', () => startAs(p));
+      const gear = document.createElement('button');
+      gear.type = 'button'; gear.className = 'btn icon-btn gear';
+      gear.setAttribute('aria-label', p.name + 'の設定と記録');
+      gear.innerHTML = $('setBtn').innerHTML;
+      gear.addEventListener('click', () => { data = p; openSettings(true); });
       const del = document.createElement('button');
       del.type = 'button'; del.className = 'btn del'; del.textContent = '消す';
       del.setAttribute('aria-label', p.name + 'の記録を消す');
@@ -1636,7 +1683,7 @@ button, summary { font-family: var(--font-body); }
         if (store.last === p.id) store.last = null;
         save(); openWho();
       });
-      row.append(pick, del); list.appendChild(row);
+      row.append(pick, gear, del); list.appendChild(row);
     });
     $('whoForm').hidden = store.profiles.length >= MAX_PLAYERS;
     $('whoNote').textContent = '';
@@ -1684,10 +1731,24 @@ button, summary { font-family: var(--font-body); }
     setState(enemy.dataset.state);
   });
 
+  /* ---------- たて持ちの時のお知らせ ---------- */
+  // スマホ・タブレットをたてに持っている間、よこむきをすすめる。よこにすると自動で消える
+  const portrait = window.matchMedia('(orientation: portrait) and (pointer: coarse)');
+  let rotateSkipped = false;
+  function checkRotate() {
+    const show = portrait.matches && !rotateSkipped;
+    if (show === !$('rotate').hidden) return;
+    $('rotate').hidden = !show;
+    if (show) paused = true; else resume();
+  }
+  $('rotateSkip').addEventListener('click', () => { rotateSkipped = true; checkRotate(); });
+  if (portrait.addEventListener) portrait.addEventListener('change', checkRotate); else portrait.addListener(checkRotate);
+
   // 開始時は必ず名前を選ぶ。後ろには前回の人の記録を表示しておく
   loadEnemy(); renderStats(false);
   $('question').innerHTML = '<span class="wait">よーい…</span>';
   openWho();
+  checkRotate();
 })();
 </script>
 </body>

@@ -15,3 +15,4 @@
 | [0008](0008-fill-in-the-blank.md) | 穴あき問題 | 採用 |
 | [0009](0009-countdown-and-ko-pause.md) | カウントダウンとKO後の間 | 採用 |
 | [0010](0010-sequential-vs-random-records.md) | じゅんばんの記録とばらばらの記録を分ける | 採用 |
+| [0011](0011-who-screen-settings-and-rotate-notice.md) | 名前えらびからの設定確認と、たて持ちのお知らせ | 採用 |
