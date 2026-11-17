@@ -289,12 +289,13 @@ button, summary { font-family: var(--font-body); }
 .judge.think b { color: var(--think-text); }
 .judge.miss b { color: var(--hit); }
 
-.keypad { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.keypad { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; touch-action: none; }   /* 指が少しすべっても、スクロールや拡大に取られないように */
 .keypad .btn {
   font-family: var(--font-display); font-weight: 400; font-size: 22px; padding: 8px 0;
-  touch-action: manipulation;            /* 連打してもダブルタップ拡大にならないように */
+  touch-action: none;
   -webkit-user-select: none; user-select: none;
 }
+.keypad .btn.down, .pin-pad .btn.down { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); background: var(--pop); }
 
 /* 記録 */
 .records { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 14px; }
@@ -1359,9 +1360,12 @@ button, summary { font-family: var(--font-body); }
     }
     return out;
   }
+  const TAP_GUARD = 180;   // 問題が出た直後は入力を受けない時間（前の問題の押しすぎが、次の問題のまちがいになるのを防ぐ）
+  let qGuard = 0;
   function nextQuestion() {
     q = queue[qi++];
     typed = ''; qValid = !document.hidden; qStart = performance.now();
+    qGuard = qStart + TAP_GUARD;
     renderQuestion();
   }
   function renderQuestion(reveal) {
@@ -1383,7 +1387,7 @@ button, summary { font-family: var(--font-body); }
   }
 
   function handleDigit(d) {
-    if (locked || paused) return;
+    if (locked || paused || performance.now() < qGuard) return;
     ac();
     const ans = String(q.hole ? q.b : q.a * q.b);
     const ms = performance.now() - qStart;
@@ -1427,6 +1431,7 @@ button, summary { font-family: var(--font-body); }
     }
     if (paused || e.ctrlKey || e.metaKey || e.altKey) return;
     if (/^[0-9]$/.test(e.key)) {
+      if (e.repeat) return;                        // 押しっぱなしの連続入力は受けない
       if (e.target && e.target.type === 'range') return;
       e.preventDefault(); handleDigit(e.key);
     }
@@ -1434,8 +1439,26 @@ button, summary { font-family: var(--font-body); }
   [1, 2, 3, 4, 5, 6, 7, 8, 9, 0].forEach(n => {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'btn'; b.textContent = n;
-    b.addEventListener('click', () => { handleDigit(String(n)); b.blur(); });
+    b.dataset.d = n;
+    // ふつうのタップは下の pointerdown で受ける。click はキーボードや読み上げ機能で押した時（detail が 0）だけ使う
+    b.addEventListener('click', e => { if (e.detail === 0) pressKey(b); });
     $('keypad').appendChild(b);
+  });
+  function flashKey(b) { b.classList.add('down'); setTimeout(() => b.classList.remove('down'), 110); }
+  function pressKey(b) { flashKey(b); handleDigit(b.dataset.d); }
+  // 指がふれた瞬間に入力する。click を待つと、指が少しすべった時や、両手の指が同時にふれている時に入力が落ちる。
+  // ボタンのすき間をさわった時は、いちばん近いボタンを押したことにする
+  $('keypad').addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    let best = null, bd = Infinity;
+    for (const b of $('keypad').children) {
+      const r = b.getBoundingClientRect();
+      const dx = Math.max(r.left - e.clientX, 0, e.clientX - r.right), dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom);
+      const d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = b; }
+    }
+    if (best) pressKey(best);
   });
 
   /* ---------- モードの解放 ---------- */
@@ -1553,7 +1576,8 @@ button, summary { font-family: var(--font-body); }
   [['1'], ['2'], ['3'], ['4'], ['5'], ['6'], ['7'], ['8'], ['9'], ['cancel', 'やめる'], ['0'], ['back', '1文字けす']].forEach(([k, label]) => {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'btn' + (label ? ' sub' : ''); b.textContent = label || k;
-    b.addEventListener('click', () => { pinKey(k); b.blur(); });
+    b.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button !== 0) return; e.preventDefault(); flashKey(b); pinKey(k); });
+    b.addEventListener('click', e => { if (e.detail === 0) pinKey(k); });
     $('pinPad').appendChild(b);
   });
   // 6桁を入れてもらう。やめたら null
