@@ -381,6 +381,10 @@ button, summary { font-family: var(--font-body); }
 .icon-btn { display: inline-grid; place-items: center; padding: 5px 8px; }
 .icon-btn svg { width: 20px; height: 20px; display: block; }
 .question.reveal .typed { color: var(--hit); }
+.question .box { display: inline-block; min-width: 1.15em; padding: 0 .12em; border: .07em solid var(--ink); border-radius: .14em; line-height: 1.05; }
+.rec-tabs { display: flex; gap: 8px; }
+.rec-tabs .btn { flex: 1; padding: 6px; box-shadow: 2px 2px 0 var(--ink); }
+.rec-tabs .btn[aria-pressed="true"] { background: var(--pop); }
 
 /* だれが遊ぶ？ */
 .who {
@@ -541,6 +545,11 @@ button, summary { font-family: var(--font-body); }
     <section class="records">
       <h2>設定</h2>
       <div class="setting">
+        <h3>問題の形</h3>
+        <div class="choice" id="forms"></div>
+        <p class="hint" id="formHint"></p>
+      </div>
+      <div class="setting">
         <h3>ゲームタイプ</h3>
         <div class="choice" id="types"></div>
         <p class="hint" id="typeHint"></p>
@@ -577,6 +586,7 @@ button, summary { font-family: var(--font-body); }
 
     <section class="records">
       <h2>九九の記録</h2>
+      <div class="rec-tabs" id="recTabs"></div>
       <div class="legend" id="legend"></div>
       <div class="kuku" id="kuku" aria-label="九九の表。たてが段、よこがかける数"></div>
       <p class="detail" id="detail"></p>
@@ -674,6 +684,11 @@ button, summary { font-family: var(--font-body); }
     ['seq',  'じゅんばん', '有効にした段を、小さい段から順番に出します。敵ひとりが1つの段です。'],
     ['rand', 'ランダム',   '有効にした段の問題を、ばらばらの順番で出します。1サイクルで全部の問題が1回ずつ出ます。'],
     ['weak', '弱点',       '有効にした段の中から、にがてな九九ほど多く出します。'],
+  ];
+  const FORMS = [
+    ['norm', 'ふつう', '3 × 4 = □ の形で出します。'],
+    ['hole', '穴あき', '3 × □ = 12 の形で出します。わり算の考え方の練習になります。記録はふつうの九九とは別に残ります。'],
+    ['mix',  'まぜる', 'ふつうと穴あきを、まぜて出します。'],
   ];
   const SFX_JAB = ['ペシ', 'パシ', 'ポコ', 'ビシ'];
   const SFX_HEAVY = ['ドカッ', 'バキッ', 'ボコッ', 'ズドン'];
@@ -1040,7 +1055,7 @@ button, summary { font-family: var(--font-body); }
   const RECENT = 3;     // 判定に使う直近の回数
   const TOO_LONG = 30000; // これより長い回答は席を外したとみなして記録しない
   const ALL_DANS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0, lock: null });
+  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0, lock: null, form: 'norm', holes: {} });
   function clean(p) {            // 保存データが壊れていても動くように整える
     if (!p || typeof p !== 'object') return null;
     const out = newProfile(String(p.name || 'プレイヤー').slice(0, 8));
@@ -1052,6 +1067,8 @@ button, summary { font-family: var(--font-body); }
     if (typeof p.lock === 'string' && /^\d{6}$/.test(p.lock)) out.lock = p.lock;
     if (Array.isArray(p.dans)) { const d = LEVELS[out.level].nums.filter(n => p.dans.includes(n)); if (d.length) out.dans = d; }
     if (p.cells && typeof p.cells === 'object') out.cells = p.cells;
+    if (p.holes && typeof p.holes === 'object') out.holes = p.holes;
+    if (FORMS.some(f => f[0] === p.form)) out.form = p.form;
     if (Number.isInteger(p.worst) && p.worst >= 0) out.worst = p.worst;
     return out;
   }
@@ -1071,16 +1088,18 @@ button, summary { font-family: var(--font-body); }
   let paused = true, gen = 0;
   function save() { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} }
   const cellKey = (a, b) => a + 'x' + b;
-  function record(a, b, ms, ok) {
-    const c = data.cells[cellKey(a, b)] || (data.cells[cellKey(a, b)] = { n: 0, miss: 0, log: [] });
+  // hole=true は穴あき問題（3×□=12）。ふつうの九九とは別の表に記録する
+  function record(a, b, ms, ok, hole) {
+    const t = hole ? data.holes : data.cells;
+    const c = t[cellKey(a, b)] || (t[cellKey(a, b)] = { n: 0, miss: 0, log: [] });
     c.n++; if (!ok) c.miss++;
     c.log.push([Math.round(ms), ok ? 1 : 0]);
     if (c.log.length > KEEP) c.log.shift();
     save();
   }
   // マスの状態：none=まだ / memo=暗記 / think=考えてる / miss=まちがえた
-  function cellInfo(a, b, who = data) {
-    const c = who.cells[cellKey(a, b)];
+  function cellInfo(a, b, who = data, hole = false) {
+    const c = (hole ? who.holes : who.cells)[cellKey(a, b)];
     if (!c || !Array.isArray(c.log) || !c.log.length) return { s: 'none', avg: 0, n: 0, miss: 0 };
     const r = c.log.slice(-RECENT);
     const avg = r.reduce((t, x) => t + x[0], 0) / r.length;
@@ -1090,10 +1109,18 @@ button, summary { font-family: var(--font-body); }
   const sec = ms => (ms / 1000).toFixed(1);
   const LABEL = { memo: '暗記', think: '考えてる', miss: 'まちがえた', none: 'まだ' };
 
-  let selected = null;
+  let selected = null, recHole = false;   // recHole：記録の画面で穴あきの表を見ているか
   function renderRecords() {
     const count = { memo: 0, think: 0, miss: 0, none: 0 }, weak = [];
-    const N = nums();
+    const N = nums(), H = recHole;
+    const tabs = $('recTabs'); tabs.textContent = '';
+    [[false, 'ふつう（3×4=□）'], [true, '穴あき（3×□=12）']].forEach(([h, label]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'btn'; b.textContent = label;
+      b.setAttribute('aria-pressed', String(H === h));
+      b.addEventListener('click', () => { recHole = h; selected = null; renderRecords(); });
+      tabs.appendChild(b);
+    });
     const grid = $('kuku'); grid.textContent = '';
     grid.style.gridTemplateColumns = `repeat(${N.length + 1}, minmax(0, 1fr))`;
     grid.classList.toggle('wide', N.length > 9);        // マスが多い時は色だけにして、数字は押して見る
@@ -1102,12 +1129,12 @@ button, summary { font-family: var(--font-body); }
     for (const a of N) {
       head(a);
       for (const b of N) {
-        const i = cellInfo(a, b); count[i.s]++;
+        const i = cellInfo(a, b, data, H); count[i.s]++;
         if (i.s === 'miss' || i.s === 'think') weak.push({ a, b, i });
         const el = document.createElement('button');
         el.type = 'button'; el.className = 's-' + i.s;
         el.textContent = i.s === 'none' ? '' : sec(i.avg);
-        el.setAttribute('aria-label', `${a}×${b} ${LABEL[i.s]}` + (i.n ? ` 平均${sec(i.avg)}秒` : ''));
+        el.setAttribute('aria-label', `${H ? `${a}×□=${a * b}` : `${a}×${b}`} ${LABEL[i.s]}` + (i.n ? ` 平均${sec(i.avg)}秒` : ''));
         el.setAttribute('aria-pressed', String(selected === cellKey(a, b)));
         el.addEventListener('click', () => { selected = cellKey(a, b); renderRecords(); });
         grid.appendChild(el);
@@ -1117,11 +1144,11 @@ button, summary { font-family: var(--font-body); }
       `<span><i class="sw s-${s}"></i>${LABEL[s]} ${count[s]}</span>`).join('');
     weak.sort((x, y) => (y.i.s === 'miss') - (x.i.s === 'miss') || y.i.avg - x.i.avg);
     $('weak').innerHTML = weak.length
-      ? weak.slice(0, 6).map(w => `<li class="s-${w.i.s}">${w.a}×${w.b}　${sec(w.i.avg)}秒</li>`).join('')
+      ? weak.slice(0, 6).map(w => `<li class="s-${w.i.s}">${H ? `${w.a}×□=${w.a * w.b}` : `${w.a}×${w.b}`}　${sec(w.i.avg)}秒</li>`).join('')
       : `<li class="empty">${count.none === N.length * N.length ? '遊ぶとここに出てきます。' : 'いまはありません。すごい！'}</li>`;
     if (selected) {
-      const [a, b] = selected.split('x').map(Number), i = cellInfo(a, b);
-      $('detail').innerHTML = `<b>${a} × ${b} = ${a * b}</b>　${LABEL[i.s]}<br>` + (i.n
+      const [a, b] = selected.split('x').map(Number), i = cellInfo(a, b, data, H);
+      $('detail').innerHTML = `<b>${H ? `${a} × □ = ${a * b}（□ は ${b}）` : `${a} × ${b} = ${a * b}`}</b>　${LABEL[i.s]}<br>` + (i.n
         ? `最近の平均 ${sec(i.avg)}秒 ／ 挑戦 ${i.n}回 ／ まちがい ${i.miss}回`
         : 'まだ出題されていません。');
     } else {
@@ -1137,20 +1164,24 @@ button, summary { font-family: var(--font-body); }
   // 敵ひとりぶんの問題を作る。数は「かける数」の個数（ふつう9／上級者14／地獄18）
   function buildQueue() {
     const N = nums(), dans = data.dans.slice().sort((x, y) => x - y);
+    const isHole = () => data.form === 'hole' || (data.form === 'mix' && Math.random() < 0.5);
+    const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
     if (data.type === 'seq') {
       const a = dans[enemyIdx % dans.length];
-      return N.map(b => ({ a, b }));
+      const out = N.map(b => ({ a, b, hole: isHole() }));
+      // 穴あきをかける数の順に出すと答えが 1,2,3… と並んでしまうので、段の中はまぜる
+      return data.form === 'norm' ? out : shuffle(out);
     }
     if (data.type === 'rand') {                 // 全部の問題をまぜた山から、上から順に取る
       if (bag.length < N.length) {
         bag = [];
-        dans.forEach(a => N.forEach(b => bag.push({ a, b })));
-        for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [bag[i], bag[j]] = [bag[j], bag[i]]; }
+        dans.forEach(a => N.forEach(b => bag.push({ a, b, hole: isHole() })));
+        shuffle(bag);
       }
       return bag.splice(0, N.length);
     }
     const pool = [], out = [];                  // 弱点：にがてなマスほど選ばれやすい（同じ敵の中では重ならない）
-    dans.forEach(a => N.forEach(b => pool.push({ a, b, w: WEIGHT[cellInfo(a, b).s] })));
+    dans.forEach(a => N.forEach(b => { const hole = isHole(); pool.push({ a, b, hole, w: WEIGHT[cellInfo(a, b, data, hole).s] }); }));
     while (out.length < N.length && pool.length) {
       let r = Math.random() * pool.reduce((t, p) => t + p.w, 0);
       let i = pool.findIndex(p => (r -= p.w) < 0);
@@ -1166,7 +1197,10 @@ button, summary { font-family: var(--font-body); }
   }
   function renderQuestion(reveal) {
     $('question').classList.toggle('reveal', !!reveal);
-    $('question').innerHTML = `${q.a} × ${q.b} = <span class="typed">${typed}</span>` + (reveal ? '' : '<span class="caret">?</span>');
+    const slot = `<span class="typed">${typed}</span>` + (reveal ? '' : '<span class="caret">?</span>');
+    $('question').innerHTML = q.hole
+      ? `${q.a} × <span class="box">${slot}</span> = ${q.a * q.b}`
+      : `${q.a} × ${q.b} = ${slot}`;
   }
   function judge(cls, head, text) {
     const j = $('judge'); j.className = 'judge ' + cls;
@@ -1182,16 +1216,16 @@ button, summary { font-family: var(--font-body); }
   function handleDigit(d) {
     if (locked || paused) return;
     ac();
-    const ans = String(q.a * q.b);
+    const ans = String(q.hole ? q.b : q.a * q.b);
     const ms = performance.now() - qStart;
     const counted = qValid && ms < TOO_LONG;
     if (!ans.startsWith(typed + d)) {            // まちがい：殴られて、答えを見せてから次の問題へ
-      if (counted) record(q.a, q.b, ms, false);
+      if (counted) record(q.a, q.b, ms, false, q.hole);
       const hasty = ms < data.th;                // 速く答えてまちがえた
       combo = 0; punched++; renderStats(false); blip();
       if (hasty) counterPunch(); else punchPlayer();
       typed = ans; renderQuestion(true);
-      judge('miss', hasty ? 'カウンター！' : 'ちがうよ', `${q.a} × ${q.b} = ${ans}`);
+      judge('miss', hasty ? 'カウンター！' : 'ちがうよ', `${q.a} × ${q.b} = ${q.a * q.b}`);
       $('question').animate([
         { transform: 'translateX(-8px)' }, { transform: 'translateX(8px)' },
         { transform: 'translateX(-4px)' }, { transform: 'translateX(0)' },
@@ -1204,7 +1238,7 @@ button, summary { font-family: var(--font-body); }
     typed += d; renderQuestion();
     if (typed !== ans) return;
 
-    if (counted) record(q.a, q.b, ms, true);
+    if (counted) record(q.a, q.b, ms, true, q.hole);
     const fast = ms < data.th;
     if (fast) judge('memo', '暗記！', `${sec(ms)}秒`);
     else judge('think', '考えた', `${sec(ms)}秒` + (counted ? '' : '（記録なし）'));
@@ -1267,6 +1301,12 @@ button, summary { font-family: var(--font-body); }
       b.addEventListener('click', fn);
       box.appendChild(b);
     };
+    const forms = $('forms'); forms.textContent = '';
+    FORMS.forEach(([k, label]) => pick(forms, label, data.form === k, () => {
+      if (data.form === k) return;
+      data.form = k; dirty = true; save(); renderSettings();
+    }));
+    $('formHint').textContent = FORMS.find(f => f[0] === data.form)[2];
     const types = $('types'); types.textContent = '';
     TYPES.forEach(([k, label]) => pick(types, label, data.type === k, () => {
       if (data.type === k) return;
@@ -1386,7 +1426,8 @@ button, summary { font-family: var(--font-body); }
         note = 'パスワードがちがいます。';
       }
     }
-    dirty = false;
+    dirty = false; selected = null;
+    recHole = data.form === 'hole';                // いま遊んでいる形の表を先に見せる
     renderSettings(); renderRecords(); renderWorst();
     $('settings').hidden = false;
     $('settings').scrollTop = 0;
@@ -1407,7 +1448,7 @@ button, summary { font-family: var(--font-body); }
       return;
     }
     clearTimeout(resetArmed); resetArmed = 0; btn.textContent = '記録を消す';
-    data.cells = {}; data.worst = null; selected = null; save(); renderRecords(); renderWorst(); renderSettings();
+    data.cells = {}; data.holes = {}; data.worst = null; selected = null; save(); renderRecords(); renderWorst(); renderSettings();
     $('detail').textContent = '記録を消しました。ワースト記録も消えました。';
   });
 
