@@ -832,17 +832,22 @@ button, summary { font-family: var(--font-body); }
     g.gain.exponentialRampToValueAtTime(0.001, t + len);
     o.connect(g).connect(dest); o.start(t); o.stop(t + len + 0.02);
   }
-  // ジャブ：速くて軽い「パシッ」
+  // ジャブ：速くて切れのある「バシッ」。短いが、当たった手ごたえ（中低音）も入れる
   function sndJab() {
     const a = ac(); if (!a) return;
     try {
       const t = a.currentTime, dest = out(a);
-      const src = noise(a, 0.045, x => (1 - x) * (1 - x));
+      const slap = noise(a, 0.075, x => (1 - x) * (1 - x));    // 皮を打つ「バシッ」
       const f = a.createBiquadFilter(), g = a.createGain();
-      f.type = 'highpass'; f.frequency.value = 1800;
-      g.gain.value = 0.8;
-      src.connect(f).connect(g).connect(dest); src.start(t);
-      sweep(a, 'triangle', 420, 190, t, 0.05, 0.5, dest);
+      f.type = 'bandpass'; f.frequency.value = 2400; f.Q.value = 0.6;
+      g.gain.value = 1.45;
+      slap.connect(f).connect(g).connect(dest); slap.start(t);
+      const crack = noise(a, 0.018, x => 1 - x);               // 当たった瞬間の鋭さ
+      const hf = a.createBiquadFilter(), hg = a.createGain();
+      hf.type = 'highpass'; hf.frequency.value = 3500; hg.gain.value = 0.7;
+      crack.connect(hf).connect(hg).connect(dest); crack.start(t);
+      sweep(a, 'sine', 280, 105, t, 0.075, 0.65, dest);        // 手ごたえ
+      sweep(a, 'triangle', 950, 320, t, 0.03, 0.35, dest);     // 速さ
     } catch (e) {}
   }
   // ストレート：重くてゴツい「ドゴッ」
