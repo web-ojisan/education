@@ -804,6 +804,87 @@ button, summary { font-family: var(--font-body); }
       src.connect(f).connect(ng).connect(a.destination); src.start(t);
     } catch (e) {}
   }
+  // 音を重ねても割れないよう、打撃の音はまとめて圧縮してから出す
+  let master = null;
+  function out(a) {
+    if (!master || master.context !== a) {
+      master = a.createDynamicsCompressor();
+      master.threshold.value = -10; master.knee.value = 8; master.ratio.value = 6;
+      master.attack.value = 0.002; master.release.value = 0.2;
+      const lim = a.createGain(); lim.gain.value = 0.85;   // 圧縮が効き始める一瞬の出すぎを抑える
+      master.connect(lim).connect(a.destination);
+    }
+    return master;
+  }
+  function noise(a, len, shape) {         // ノイズ。shape(0〜1) で音量の形を決める
+    const n = Math.floor(a.sampleRate * len);
+    const buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * shape(i / n);
+    const src = a.createBufferSource(); src.buffer = buf;
+    return src;
+  }
+  function sweep(a, type, f0, f1, t, len, vol, dest) {   // 高さが f0→f1 に動く音
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f1, t + len);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + len);
+    o.connect(g).connect(dest); o.start(t); o.stop(t + len + 0.02);
+  }
+  // ジャブ：速くて軽い「パシッ」
+  function sndJab() {
+    const a = ac(); if (!a) return;
+    try {
+      const t = a.currentTime, dest = out(a);
+      const src = noise(a, 0.045, x => (1 - x) * (1 - x));
+      const f = a.createBiquadFilter(), g = a.createGain();
+      f.type = 'highpass'; f.frequency.value = 1800;
+      g.gain.value = 0.8;
+      src.connect(f).connect(g).connect(dest); src.start(t);
+      sweep(a, 'triangle', 420, 190, t, 0.05, 0.5, dest);
+    } catch (e) {}
+  }
+  // ストレート：重くてゴツい「ドゴッ」
+  function sndStraight() {
+    const a = ac(); if (!a) return;
+    try {
+      const t = a.currentTime, dest = out(a);
+      sweep(a, 'sine', 150, 36, t, 0.32, 1.0, dest);          // 腹にひびく低音
+      sweep(a, 'square', 95, 40, t, 0.12, 0.28, dest);        // ゴツさ
+      const src = noise(a, 0.14, x => 1 - x);
+      const f = a.createBiquadFilter(), g = a.createGain();
+      f.type = 'lowpass'; f.frequency.setValueAtTime(2600, t); f.frequency.exponentialRampToValueAtTime(300, t + 0.14);
+      g.gain.value = 0.75;
+      src.connect(f).connect(g).connect(dest); src.start(t);
+    } catch (e) {}
+  }
+  // KO：必殺技。ため → 大爆発 → 長いひびき（約1.6秒）
+  function sndKO() {
+    const a = ac(); if (!a) return;
+    try {
+      const t = a.currentTime, dest = out(a);
+      // ひびき（やまびこ）を付ける
+      const delay = a.createDelay(0.5), fb = a.createGain(), wet = a.createGain(), bus = a.createGain();
+      delay.delayTime.value = 0.16; fb.gain.value = 0.45; wet.gain.value = 0.5;
+      bus.connect(dest); bus.connect(delay); delay.connect(fb).connect(delay); delay.connect(wet).connect(dest);
+      // ため：一瞬で駆け上がる「シュイン」
+      sweep(a, 'sawtooth', 180, 1600, t, 0.11, 0.22, bus);
+      const T = t + 0.1;                                       // 着弾
+      sweep(a, 'sine', 170, 26, T, 1.2, 1.0, bus);            // 大きく長い低音
+      sweep(a, 'square', 110, 30, T, 0.35, 0.35, bus);
+      sweep(a, 'sawtooth', 1400, 60, T, 0.55, 0.2, bus);      // 光線のように落ちていく音
+      const boom = noise(a, 1.3, x => Math.pow(1 - x, 1.6));
+      const f = a.createBiquadFilter(), g = a.createGain();
+      f.type = 'lowpass'; f.frequency.setValueAtTime(5000, T); f.frequency.exponentialRampToValueAtTime(160, T + 1.2);
+      g.gain.value = 0.9;
+      boom.connect(f).connect(g).connect(bus); boom.start(T);
+      const crack = noise(a, 0.06, x => 1 - x);               // 着弾の瞬間の「バキッ」
+      const hf = a.createBiquadFilter(), hg = a.createGain();
+      hf.type = 'highpass'; hf.frequency.value = 1500; hg.gain.value = 0.7;
+      crack.connect(hf).connect(hg).connect(bus); crack.start(T);
+    } catch (e) {}
+  }
   function tone(freq, len) {              // カウントダウンの「ピッ」
     const a = ac(); if (!a) return;
     try {
@@ -1134,29 +1215,48 @@ button, summary { font-family: var(--font-body); }
   }
 
   /* ---------- 殴る ---------- */
+  const ONE_TWO = 120;   // ワン・ツーの間（ミリ秒）
+  // heavy=速く答えた。速い時はワン・ツー（ジャブ→ストレート）、遅い時はジャブ1発。
+  // その敵の最後の問題なら、最後の一発がKOの必殺の一撃になる
   function hit(heavy) {
     dir = -dir;
-    const ko = qi >= queue.length, pt = hitPoint(), p = ko ? 1.4 : heavy ? 1 : 0.35;
+    const ko = qi >= queue.length, g = gen;
     if (ko) runResult = finishRun();
-
-    enemy.style.setProperty('--tilt', (dir * (heavy ? 13 : 7)) + 'deg');
-    setState(ko ? 'ko' : 'hit');
     clearTimeout(stateTimer);
-    spark(pt, heavy || ko);
-    thump(Math.min(p, 1));
 
-    if (!heavy && !ko) {                  // ジャブ：即座に軽く
-      recoil(p); shake(p); bits(pt, 2);
+    const jab = () => {                    // ジャブ：即座に軽く
+      const pt = hitPoint();
+      enemy.style.setProperty('--tilt', (dir * 7) + 'deg');
+      setState('hit');
+      spark(pt, false); sndJab();
+      recoil(0.35); shake(0.35); bits(pt, 2);
+    };
+    const big = () => {                    // ストレート／KOの一撃：ヒットストップで一瞬止めてから吹っ飛ばす
+      if (g !== gen) return;
+      const pt = hitPoint(), p = ko ? 1.4 : 1;
+      enemy.style.setProperty('--tilt', (dir * 13) + 'deg');
+      setState(ko ? 'ko' : 'hit');
+      clearTimeout(stateTimer);
+      spark(pt, true);
+      if (ko) sndKO(); else sndStraight();
+      flashScreen(ko ? 1 : 0.7);
+      bits(pt, ko ? 16 : 9);
+      setTimeout(() => {
+        if (g !== gen) return;
+        shake(p);
+        if (ko) knockout(); else { recoil(p); stateTimer = setTimeout(() => setState('idle'), 360); }
+      }, ko ? 150 : 70);
+    };
+
+    if (heavy) {                           // ワン・ツー
+      jab();
+      setTimeout(() => { dir = -dir; big(); }, ONE_TWO);
+    } else if (ko) {
+      big();
+    } else {
+      jab();
       stateTimer = setTimeout(() => setState('idle'), 150);
-      return false;
     }
-    // ストレート：ヒットストップで一瞬止めてから吹っ飛ばす
-    flashScreen(ko ? 1 : 0.7);
-    bits(pt, ko ? 16 : 9);
-    setTimeout(() => {
-      shake(p);
-      if (ko) knockout(); else { recoil(p); stateTimer = setTimeout(() => setState('idle'), 360); }
-    }, ko ? 150 : 70);
     return ko;
   }
   const FLY = 850;      // 奥へ飛んでいく時間（ミリ秒）
@@ -1179,7 +1279,6 @@ button, summary { font-family: var(--font-body); }
   }
   function knockout() {
     kos++; renderStats(false);
-    setTimeout(() => thump(1), 90);
     const d = dir, g = gen, res = runResult;
     const rest = res ? KO_RESULT : KO_REST;
     if (res) setTimeout(() => { if (g === gen) showRunResult(res, rest); }, FLY + 40 + KO_SHOW);
