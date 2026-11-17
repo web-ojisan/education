@@ -228,6 +228,20 @@ button, summary { font-family: var(--font-body); }
   paint-order: stroke fill;
 }
 .question .wait { color: #b9bbcc; }
+.runres {
+  position: absolute; left: 50%; top: 46%; translate: -50% -50%;
+  width: 92%; text-align: center;
+  font-family: var(--font-display); color: var(--paper);
+  -webkit-text-stroke: 7px var(--ink); paint-order: stroke fill;
+  font-size: clamp(20px, 6.5vh, 38px); line-height: 1.4;
+}
+.runres b { display: block; font-weight: 400; color: var(--pop); white-space: nowrap; }
+.stamps { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 6px 8px; align-items: center; font-size: 13px; }
+.stamps .dan { font-family: var(--font-display); }
+.stamps .best { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stamp { border: 2px solid #c9c6b8; border-radius: 999px; padding: 1px 8px; font-weight: 700; color: #a8a596; text-align: center; white-space: nowrap; }
+.stamp.on { border-color: var(--ink); color: var(--ink); background: var(--memo); }
+.stamp.seq.on { background: var(--pop); }
 .ko-banner {
   position: absolute; inset: 0; z-index: 6;
   display: grid; place-items: center;
@@ -595,7 +609,13 @@ button, summary { font-family: var(--font-body); }
 
     <section class="records">
       <h2>九九の記録</h2>
+      <div>
+        <h3>段ごとの合格</h3>
+        <div class="stamps" id="stamps"></div>
+        <p class="hint">「じゅんばん」は、じゅんばんタイプでその段を全問、暗記の速さで正解するともらえます。右の秒数は全問正解したときの合計タイムのベストです。「暗記」は、その段のマスがぜんぶ暗記になるともらえます。</p>
+      </div>
       <div class="rec-tabs" id="recTabs"></div>
+      <p class="hint" id="recHint"></p>
       <div class="legend" id="legend"></div>
       <div class="kuku" id="kuku" aria-label="九九の表。たてが段、よこがかける数"></div>
       <p class="detail" id="detail"></p>
@@ -690,9 +710,9 @@ button, summary { font-family: var(--font-body); }
     { name: '地獄',    nums: R(1, 9).concat(R(11, 19)) },
   ];
   const TYPES = [
-    ['seq',  'じゅんばん', '有効にした段を、小さい段から順番に出します。敵ひとりが1つの段です。'],
-    ['rand', 'ランダム',   '有効にした段の問題を、ばらばらの順番で出します。1サイクルで全部の問題が1回ずつ出ます。'],
-    ['weak', '弱点',       '有効にした段の中から、にがてな九九ほど多く出します。'],
+    ['seq',  'じゅんばん', '有効にした段を、小さい段から順番に出します。敵ひとりが1つの段です。速く答えても「暗記」にはなりませんが、段ごとの「じゅんばん合格」とベストタイムが残ります。'],
+    ['rand', 'ランダム',   '有効にした段の問題を、ばらばらの順番で出します。1サイクルで全部の問題が1回ずつ出ます。速く正解すると「暗記」になります。'],
+    ['weak', '弱点',       '有効にした段の中から、にがてな九九ほど多く出します。速く正解すると「暗記」になります。'],
   ];
   const FORMS = [
     ['norm', 'ふつう', '3 × 4 = □ の形で出します。'],
@@ -706,6 +726,7 @@ button, summary { font-family: var(--font-body); }
   let combo = 0, kos = 0, locked = false, dir = 1;
   let stateTimer = 0;
   let queue = [], qi = 0, bag = [];   // いまの敵が出す問題と、その何問目か
+  let run = null, runResult = null;   // じゅんばんで1つの段を通している間の成績と、その結果
   let punched = 0;      // このサイクルでなぐられた回数（＝まちがえた回数）
   const images = { idle: null, hit: null, ko: null };   // 設定画面から手で差し替えた絵（全部の敵に使う）
   // 敵ごとの絵。ENEMIES に img: 'フォルダ名' と書くと img/enemies/フォルダ名/ の idle・hit・ko・attack.png を使う。
@@ -799,6 +820,9 @@ button, summary { font-family: var(--font-body); }
   function loadEnemy() {
     const e = ENEMIES[enemyIdx % ENEMIES.length];
     queue = buildQueue(); qi = 0;
+    // じゅんばん（ふつうの形）は答えが予想できるので、九九の表には記録せず、段ごとの成績として数える
+    run = data.type === 'seq' && data.form === 'norm' ? { a: queue[0].a, total: 0, miss: 0, fast: true, valid: true } : null;
+    runResult = null;
     $('enemyName').textContent = e.name + (data.type === 'seq' ? '（' + queue[0].a + 'の段）' : '');
     $('shirt').setAttribute('fill', e.shirt);
     $('hair').setAttribute('fill', e.hair);
@@ -1036,10 +1060,44 @@ button, summary { font-family: var(--font-body); }
     spawnEnemy();
   });
 
+  /* ---------- じゅんばんの成績（段ごとの合格とベストタイム） ---------- */
+  function seqRec(a, level = data.level) {
+    const t = data.seq[level] || (data.seq[level] = {});
+    return t[a] || (t[a] = { pass: false, best: null, n: 0 });
+  }
+  // 段を最後まで答えた時に呼ぶ。全問正解ならタイムを残し、全問が暗記の速さなら合格にする
+  function finishRun() {
+    if (!run) return null;
+    const r = seqRec(run.a), res = { a: run.a, miss: run.miss, time: null, best: r.best, newBest: false, pass: false };
+    r.n++;
+    if (!run.miss && run.valid) {
+      res.time = run.total;
+      if (r.best == null || run.total < r.best) { r.best = Math.round(run.total); res.newBest = true; }
+      if (run.fast && !r.pass) { r.pass = true; res.pass = true; }
+      res.best = r.best;
+    }
+    save(); run = null;
+    return res;
+  }
+  function showRunResult(res, ms) {
+    const el = document.createElement('div');
+    el.className = 'runres';
+    el.innerHTML = res.time == null
+      ? `${res.a}の段<br>${res.miss ? 'まちがい ' + res.miss + '回' : 'タイムなし'}`
+      : `${res.a}の段　${sec(res.time)}秒<b>${res.pass ? 'じゅんばん合格！' : res.newBest ? 'ベストこうしん！' : 'ベスト ' + sec(res.best) + '秒'}</b>`;
+    fx.appendChild(el);
+    el.animate([
+      { opacity: 0, transform: 'scale(1.3)' }, { opacity: 1, transform: 'scale(1)', offset: 0.12 },
+      { opacity: 1, transform: 'scale(1)', offset: 0.88 }, { opacity: 0, transform: 'scale(.96)' },
+    ], { duration: ms, easing: 'ease-out' }).onfinish = () => el.remove();
+    if (res.pass) { ping(); setTimeout(ping, 180); const r = stage.getBoundingClientRect(); bits({ x: r.width / 2, y: r.height * 0.46 }, 22); }
+  }
+
   /* ---------- 殴る ---------- */
   function hit(heavy) {
     dir = -dir;
     const ko = qi >= queue.length, pt = hitPoint(), p = ko ? 1.4 : heavy ? 1 : 0.35;
+    if (ko) runResult = finishRun();
 
     enemy.style.setProperty('--tilt', (dir * (heavy ? 13 : 7)) + 'deg');
     setState(ko ? 'ko' : 'hit');
@@ -1064,6 +1122,7 @@ button, summary { font-family: var(--font-body); }
   const FLY = 850;      // 奥へ飛んでいく時間（ミリ秒）
   const KO_SHOW = 1000; // 「K.O.!」を見せる時間
   const KO_REST = 800;  // そのあと、次の敵が出るまでの一呼吸
+  const KO_RESULT = 1700; // じゅんばんの成績を出す時は、一呼吸のかわりにこの長さだけ見せる
   function twinkle(pt) {
     ping();
     const el = document.createElement('div');
@@ -1081,7 +1140,9 @@ button, summary { font-family: var(--font-body); }
   function knockout() {
     kos++; renderStats(false);
     setTimeout(() => thump(1), 90);
-    const d = dir, g = gen;
+    const d = dir, g = gen, res = runResult;
+    const rest = res ? KO_RESULT : KO_REST;
+    if (res) setTimeout(() => { if (g === gen) showRunResult(res, rest); }, FLY + 40 + KO_SHOW);
     // 画面の奥（消失点）へ飛んでいって星になる
     const sr = stage.getBoundingClientRect(), wr = enemyWrap.getBoundingClientRect();
     const star = { x: sr.width * (0.5 + d * 0.2), y: sr.height * 0.34 };          // 星になる位置（ステージ内）
@@ -1103,7 +1164,7 @@ button, summary { font-family: var(--font-body); }
     setTimeout(() => {
       if (g !== gen) return;               // 途中で交代していたら何もしない
       afterEnemy();
-    }, FLY + 40 + KO_SHOW + KO_REST);
+    }, FLY + 40 + KO_SHOW + rest);
   }
 
   /* ---------- 記録（localStorage） ---------- */
@@ -1113,7 +1174,7 @@ button, summary { font-family: var(--font-body); }
   const RECENT = 3;     // 判定に使う直近の回数
   const TOO_LONG = 30000; // これより長い回答は席を外したとみなして記録しない
   const ALL_DANS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0, lock: null, form: 'norm', holes: {} });
+  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0, lock: null, form: 'norm', holes: {}, seq: {} });
   function clean(p) {            // 保存データが壊れていても動くように整える
     if (!p || typeof p !== 'object') return null;
     const out = newProfile(String(p.name || 'プレイヤー').slice(0, 8));
@@ -1126,16 +1187,22 @@ button, summary { font-family: var(--font-body); }
     if (Array.isArray(p.dans)) { const d = LEVELS[out.level].nums.filter(n => p.dans.includes(n)); if (d.length) out.dans = d; }
     if (p.cells && typeof p.cells === 'object') out.cells = p.cells;
     if (p.holes && typeof p.holes === 'object') out.holes = p.holes;
+    if (p.seq && typeof p.seq === 'object') out.seq = p.seq;
     if (FORMS.some(f => f[0] === p.form)) out.form = p.form;
     if (Number.isInteger(p.worst) && p.worst >= 0) out.worst = p.worst;
     return out;
   }
-  let store = { profiles: [], last: null };
+  const DATA_V = 3;     // 3：じゅんばんの記録を九九の表から分けた。それより前の表は順番とばらばらが混ざっているので消す
+  let store = { v: DATA_V, profiles: [], last: null };
   try {
     const d = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (d && Array.isArray(d.profiles)) {
       store.profiles = d.profiles.map(clean).filter(Boolean).slice(0, MAX_PLAYERS);
       store.last = d.last || null;
+      if (d.v !== DATA_V) store.profiles.forEach(p => {       // 混ざった記録と、それで解放したモードを消して数え直す
+        p.cells = {}; p.seq = {}; p.unlocked = 0; p.level = 0;
+        p.dans = p.dans.filter(n => n <= 9); if (!p.dans.length) p.dans = ALL_DANS.slice();
+      });
     } else {
       // 名前なしで遊んでいた頃の記録があれば、1人目として引き継ぐ
       const old = JSON.parse(localStorage.getItem(OLD_KEY) || 'null');
@@ -1171,6 +1238,14 @@ button, summary { font-family: var(--font-body); }
   function renderRecords() {
     const count = { memo: 0, think: 0, miss: 0, none: 0 }, weak = [];
     const N = nums(), H = recHole;
+    $('stamps').innerHTML = N.map(a => {
+      const r = (data.seq[data.level] || {})[a] || {};
+      const memo = N.filter(b => cellInfo(a, b).s === 'memo').length;
+      return `<span class="dan">${a}の段</span><span class="stamp seq${r.pass ? ' on' : ''}">じゅんばん</span>`
+        + `<span class="best">${r.best != null ? sec(r.best) + '秒' : '—'}</span>`
+        + `<span class="stamp${memo === N.length ? ' on' : ''}">暗記 ${memo}/${N.length}</span>`;
+    }).join('');
+    $('recHint').textContent = H ? '穴あき問題の記録です。' : 'ランダムと弱点で出た問題の記録です。じゅんばんで答えた分は、ここには入りません。';
     const tabs = $('recTabs'); tabs.textContent = '';
     [[false, 'ふつう（3×4=□）'], [true, '穴あき（3×□=12）']].forEach(([h, label]) => {
       const b = document.createElement('button');
@@ -1278,7 +1353,8 @@ button, summary { font-family: var(--font-body); }
     const ms = performance.now() - qStart;
     const counted = qValid && ms < TOO_LONG;
     if (!ans.startsWith(typed + d)) {            // まちがい：殴られて、答えを見せてから次の問題へ
-      if (counted) record(q.a, q.b, ms, false, q.hole);
+      if (run) { run.miss++; }
+      else if (counted) record(q.a, q.b, ms, false, q.hole);
       const hasty = ms < data.th;                // 速く答えてまちがえた
       combo = 0; punched++; renderStats(false); blip();
       if (hasty) counterPunch(); else punchPlayer();
@@ -1296,9 +1372,10 @@ button, summary { font-family: var(--font-body); }
     typed += d; renderQuestion();
     if (typed !== ans) return;
 
-    if (counted) record(q.a, q.b, ms, true, q.hole);
     const fast = ms < data.th;
-    if (fast) judge('memo', '暗記！', `${sec(ms)}秒` + (counted ? '' : '（記録なし）'));
+    if (run) { run.total += ms; if (!fast) run.fast = false; if (!counted) run.valid = false; }
+    else if (counted) record(q.a, q.b, ms, true, q.hole);
+    if (fast) judge('memo', run ? 'はやい！' : '暗記！', `${sec(ms)}秒` + (counted ? '' : '（記録なし）'));
     else judge('think', '考えた', `${sec(ms)}秒` + (counted ? '' : '（記録なし）'));
     combo++; renderStats(true);
     const ko = hit(fast);
@@ -1386,7 +1463,7 @@ button, summary { font-family: var(--font-body); }
     let hint = `いまは「${LEVELS[data.level].name}」：敵ひとりにつき${n}問（かける数は ${data.level ? '1〜9 と 11〜' + nums()[n - 1] : '1〜9'}）。`;
     if (data.unlocked < LEVELS.length - 1) {
       const nx = LEVELS[data.unlocked + 1], cur = LEVELS[data.unlocked];
-      hint += `「${cur.name}」の${cur.nums.length * cur.nums.length}問をぜんぶ「暗記」の速さにすると「${nx.name}」が解放されます（あと${memoLeft(data.unlocked)}問）。`;
+      hint += `「${cur.name}」の${cur.nums.length * cur.nums.length}問を、ランダムか弱点でぜんぶ「暗記」にすると「${nx.name}」が解放されます（あと${memoLeft(data.unlocked)}問）。`;
     }
     $('levelHint').textContent = hint;
 
@@ -1506,7 +1583,7 @@ button, summary { font-family: var(--font-body); }
       return;
     }
     clearTimeout(resetArmed); resetArmed = 0; btn.textContent = '記録を消す';
-    data.cells = {}; data.holes = {}; data.worst = null; selected = null; save(); renderRecords(); renderWorst(); renderSettings();
+    data.cells = {}; data.holes = {}; data.seq = {}; data.worst = null; selected = null; save(); renderRecords(); renderWorst(); renderSettings();
     $('detail').textContent = '記録を消しました。ワースト記録も消えました。';
   });
 

@@ -14,3 +14,4 @@
 | [0007](0007-enemy-images.md) | 敵キャラの絵の持ち方 | 採用 |
 | [0008](0008-fill-in-the-blank.md) | 穴あき問題 | 採用 |
 | [0009](0009-countdown-and-ko-pause.md) | カウントダウンとKO後の間 | 採用 |
+| [0010](0010-sequential-vs-random-records.md) | じゅんばんの記録とばらばらの記録を分ける | 採用 |
