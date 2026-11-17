@@ -721,7 +721,8 @@ button, summary { font-family: var(--font-body); }
       <div>これまでのワースト<b id="cycleWorst">0</b></div>
     </div>
     <p class="cycle-msg" id="cycleMsg"></p>
-    <button class="btn" id="cycleNext" type="button">つぎのサイクルへ</button>
+    <button class="btn" id="cycleNext" type="button" style="background:var(--pop)">つぎのサイクルへ</button>
+    <button class="btn" id="cycleTop" type="button" style="font-size:14px;padding:8px">名前えらびにもどる（設定を変える）</button>
   </div>
 </div>
 
@@ -1091,6 +1092,8 @@ button, summary { font-family: var(--font-body); }
     if (enemyIdx % data.dans.length === 0) showCycle();   // ひとまわりしたら結果を見せる
     else spawnEnemy();
   }
+  // 名前えらびの画面へ。そこで設定を見直してから、名前を押すと最初の敵から始まる
+  $('cycleTop').addEventListener('click', () => { $('cycle').hidden = true; openWho(); });
   $('cycleNext').addEventListener('click', () => {
     $('cycle').hidden = true;
     punched = 0; paused = false;
