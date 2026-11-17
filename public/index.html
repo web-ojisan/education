@@ -342,7 +342,7 @@ button, summary { font-family: var(--font-body); }
   .hud h1 { font-size: 18px; flex-basis: 100%; }
 }
 
-/* 横持ち（スマホ・タブレット）：1画面に収め、数字は下端に1列。左手が1〜5、右手が6〜0 */
+/* 横持ち（スマホ・タブレット）：1画面に収め、上から 敵 → 式 → 数字1列。左手が1〜5、右手が6〜0 */
 @media (orientation: landscape) and (pointer: coarse), (orientation: landscape) and (max-height: 520px) {
   .game { grid-template-columns: minmax(0, 1fr); padding: 8px 12px 16px; gap: 8px; }
   .hud { flex-wrap: nowrap; gap: 8px 12px; height: 36px; }
@@ -350,25 +350,32 @@ button, summary { font-family: var(--font-body); }
   .hud .btn { padding: 4px 10px; white-space: nowrap; }
   .play {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto auto;
     gap: 10px;
     height: calc(100vh - 62px);
     height: calc(100dvh - 62px);
-    min-height: 230px;
+    min-height: 250px;
     padding: 0 6px 6px 0;                /* 硬い影のぶん */
   }
   .stage { height: auto; min-height: 0; }
-  .enemy-wrap { height: min(76%, 560px); }   /* 低い画面で頭が体力バーに重ならないように */
-  .panel { justify-content: center; min-height: 0; padding: 8px 12px; }
-  .question { font-size: clamp(34px, 13vh, 76px); white-space: nowrap; }
+  .enemy-wrap { height: min(82%, 560px); }
+  .enemy-info { right: auto; width: min(38%, 300px); }   /* 低い画面で頭が体力バーに重ならないよう左上に寄せる */
+  .panel { padding: 6px 12px; }
+  .question { font-size: clamp(34px, 11vh, 72px); white-space: nowrap; }
   .keypad {
-    grid-column: 1 / -1;
     grid-template-columns: repeat(5, minmax(0, 1fr)) clamp(10px, 3vw, 36px) repeat(5, minmax(0, 1fr));
     gap: 6px;
   }
-  .keypad .btn { font-size: clamp(22px, 7vh, 34px); padding: 0; height: clamp(52px, 15vh, 92px); }
+  .keypad .btn { font-size: clamp(22px, 7vh, 34px); padding: 0; height: clamp(52px, 13vh, 92px); }
   .keypad .btn:nth-child(6) { grid-column: 7; }   /* 5と6の間を空けて左右の手を分ける */
+}
+/* 高さが足りない横持ちスマホ：式を中央、判定はその右に置いて1行ぶんに収める */
+@media (orientation: landscape) and (max-height: 520px) {
+  .panel { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; padding: 2px 12px; }
+  .question { grid-column: 2; font-size: clamp(30px, 12vh, 48px); }
+  .judge { grid-column: 3; text-align: left; font-size: 12px; line-height: 1.35; min-height: 0; }
+  .judge b { font-size: 15px; display: block; margin: 0; }
 }
 
 /* だれが遊ぶ？ */
