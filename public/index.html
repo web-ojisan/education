@@ -347,7 +347,18 @@ button, summary { font-family: var(--font-body); }
 .swap p { margin: 0; flex-basis: 100%; color: var(--muted); line-height: 1.6; }
 
 @media (max-width: 480px) {
-  .hud h1 { font-size: 18px; flex-basis: 100%; }
+  /* 1行目に題名と音ボタン、2行目に名前・設定・成績。3行にならないようにする */
+  .hud { gap: 8px 12px; }
+  .hud h1 { font-size: 18px; order: -2; }
+  #soundBtn { order: -1; }
+  #whoBtn { max-width: 52vw; }
+}
+/* たて持ち（スマホ・タブレット）：スクロールなしで数字ボタンまで見えるよう、敵のステージの高さを画面に合わせる */
+@media (orientation: portrait) and (pointer: coarse) {
+  .game { min-height: 100vh; min-height: 100dvh; grid-template-rows: auto minmax(0, 1fr); padding-bottom: 14px; }
+  .play { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(140px, 1fr) auto auto; padding-bottom: 6px; }
+  .stage { height: auto; min-height: 0; }
+  .enemy-wrap { height: min(86%, 560px); }
 }
 
 /* 横持ち（スマホ・タブレット）：1画面に収め、上から 敵 → 式 → 数字1列。左手が1〜5、右手が6〜0 */
