@@ -219,6 +219,15 @@ button, summary { font-family: var(--font-body); }
   position: absolute; inset: 0; z-index: 5;
   background: #fff; opacity: 0; pointer-events: none;
 }
+.count {
+  position: absolute; left: 50%; top: 46%; translate: -50% -50%;
+  font-family: var(--font-mono); font-weight: 700;   /* 太い見出し用の書体だと数字がつぶれて読みにくい */
+  font-size: clamp(100px, 30vh, 210px); line-height: 1;
+  color: var(--pop);
+  -webkit-text-stroke: 14px var(--ink);
+  paint-order: stroke fill;
+}
+.question .wait { color: #b9bbcc; }
 .ko-banner {
   position: absolute; inset: 0; z-index: 6;
   display: grid; place-items: center;
@@ -736,6 +745,15 @@ button, summary { font-family: var(--font-body); }
       src.connect(f).connect(ng).connect(a.destination); src.start(t);
     } catch (e) {}
   }
+  function tone(freq, len) {              // カウントダウンの「ピッ」
+    const a = ac(); if (!a) return;
+    try {
+      const t = a.currentTime, o = a.createOscillator(), g = a.createGain();
+      o.type = 'triangle'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.16, t); g.gain.exponentialRampToValueAtTime(0.001, t + len);
+      o.connect(g).connect(a.destination); o.start(t); o.stop(t + len);
+    } catch (e) {}
+  }
   function blip() {
     const a = ac(); if (!a) return;
     try {
@@ -961,12 +979,50 @@ button, summary { font-family: var(--font-body); }
     $('cycle').hidden = false;
     try { $('cycleNext').focus({ preventScroll: true }); } catch (e) {}
   }
+  /* ---------- カウントダウン ---------- */
+  const COUNT_MS = 700;   // 3・2・1 の1つぶんの長さ
+  // 問題を隠して 3・2・1 と数え、終わったら then を呼ぶ。数えている間は入力を受け付けない。
+  // ほかの画面が出て止まっている間は待ち、再開したら3から数え直す
+  function countdown(then) {
+    const g = gen;
+    locked = true;
+    $('question').classList.remove('reveal');
+    $('question').innerHTML = '<span class="wait">よーい…</span>';
+    let n = 3;
+    const step = () => {
+      if (g !== gen) return;
+      if (paused) { n = 3; setTimeout(step, 200); return; }
+      if (n === 0) { locked = false; tone(1320, 0.22); then(); return; }
+      const el = document.createElement('div');
+      el.className = 'count'; el.textContent = n;
+      fx.appendChild(el);
+      el.animate([
+        { transform: 'scale(1.7)', opacity: 0 },
+        { transform: 'scale(1)', opacity: 1, offset: 0.2 },
+        { transform: 'scale(.94)', opacity: 1, offset: 0.75 },
+        { transform: 'scale(.8)', opacity: 0 },
+      ], { duration: COUNT_MS, easing: 'ease-out' }).onfinish = () => el.remove();
+      tone(660, 0.12);
+      n--;
+      setTimeout(step, COUNT_MS);
+    };
+    step();
+  }
+  // 止まっていたゲームにもどる時：数え直してから、同じ問題を出し直す（考える時間があったので記録はしない）
+  function recount() {
+    countdown(() => { typed = ''; renderQuestion(); qStart = performance.now(); qValid = false; });
+  }
+  // 敵が登場し、名前を見せてからカウントダウン、そのあと最初の問題
   function spawnEnemy() {
-    loadEnemy(); nextQuestion();
+    const g = gen;
+    locked = true;
+    loadEnemy();
+    $('question').classList.remove('reveal');
+    $('question').innerHTML = '<span class="wait">よーい…</span>';
     enemyWrap.animate([
       { transform: 'translateY(60%)' }, { transform: 'translateY(-4%)', offset: 0.7 }, { transform: 'translateY(0)' },
     ], { duration: 380, easing: 'ease-out' });
-    locked = false;
+    setTimeout(() => { if (g === gen) countdown(nextQuestion); }, 500);
   }
   function afterEnemy() {
     enemyWrap.getAnimations().forEach(a => a.cancel());
@@ -1006,6 +1062,8 @@ button, summary { font-family: var(--font-body); }
     return ko;
   }
   const FLY = 850;      // 奥へ飛んでいく時間（ミリ秒）
+  const KO_SHOW = 1000; // 「K.O.!」を見せる時間
+  const KO_REST = 800;  // そのあと、次の敵が出るまでの一呼吸
   function twinkle(pt) {
     ping();
     const el = document.createElement('div');
@@ -1041,11 +1099,11 @@ button, summary { font-family: var(--font-body); }
       { opacity: 1, transform: 'scale(1) rotate(-8deg)', offset: 0.12 },
       { opacity: 1, transform: 'scale(1.04) rotate(-8deg)', offset: 0.85 },
       { opacity: 0, transform: 'scale(1.1) rotate(-8deg)' },
-    ], { duration: 760, delay: FLY + 40, easing: 'ease-out' });   // 星になってから出す
+    ], { duration: KO_SHOW, delay: FLY + 40, easing: 'ease-out' });   // 星になってから出す
     setTimeout(() => {
       if (g !== gen) return;               // 途中で交代していたら何もしない
       afterEnemy();
-    }, 1650);
+    }, FLY + 40 + KO_SHOW + KO_REST);
   }
 
   /* ---------- 記録（localStorage） ---------- */
@@ -1240,7 +1298,7 @@ button, summary { font-family: var(--font-body); }
 
     if (counted) record(q.a, q.b, ms, true, q.hole);
     const fast = ms < data.th;
-    if (fast) judge('memo', '暗記！', `${sec(ms)}秒`);
+    if (fast) judge('memo', '暗記！', `${sec(ms)}秒` + (counted ? '' : '（記録なし）'));
     else judge('think', '考えた', `${sec(ms)}秒` + (counted ? '' : '（記録なし）'));
     combo++; renderStats(true);
     const ko = hit(fast);
@@ -1356,6 +1414,7 @@ button, summary { font-family: var(--font-body); }
   function resume() {
     paused = ['who', 'settings', 'cycle', 'unlock', 'pin', 'lockWarn'].some(id => !$(id).hidden);
     qValid = false;                               // 止まっていた問題の時間は記録しない
+    if (!paused && !locked) recount();            // 問題の途中で止めていた時（演出の途中なら、その流れが自分で数える）
   }
 
   /* ---------- 6桁のパスワード入力 ---------- */
@@ -1435,8 +1494,7 @@ button, summary { font-family: var(--font-body); }
   });
   $('setClose').addEventListener('click', () => {
     $('settings').hidden = true;
-    resume();
-    if (dirty) restartRun();
+    if (dirty) { paused = false; restartRun(); } else resume();
     checkUnlock();                                // 「暗記とみなす速さ」を変えて条件を満たした場合
   });
   let resetArmed = 0;
@@ -1466,7 +1524,7 @@ button, summary { font-family: var(--font-body); }
     enemyWrap.getAnimations().forEach(a => a.cancel());
     $('cycle').hidden = true;
     $('judge').className = 'judge'; $('judge').textContent = HINT;
-    loadEnemy(); renderStats(false); nextQuestion();
+    renderStats(false); spawnEnemy();
   }
   function startAs(p) {
     data = p; store.last = p.id; save();
@@ -1550,7 +1608,8 @@ button, summary { font-family: var(--font-body); }
   });
 
   // 開始時は必ず名前を選ぶ。後ろには前回の人の記録を表示しておく
-  loadEnemy(); renderStats(false); nextQuestion();
+  loadEnemy(); renderStats(false);
+  $('question').innerHTML = '<span class="wait">よーい…</span>';
   openWho();
 })();
 </script>
