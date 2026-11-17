@@ -1,1 +1,1030 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>九九パンチ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=JetBrains+Mono:wght@700&family=Zen+Kaku+Gothic+New:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* layout: 漫画のコマ。上に敵のステージ、下に打つ言葉のパネル。太い墨線と硬い影で統一 */
+  --cobalt: #2447d6;
+  --cobalt-deep: #172f9a;
+  --ink: #14110f;
+  --paper: #fffdf5;
+  --pop: #ffd60a;
+  --hit: #ff3b30;
+  --muted: #5d6079;
+  --memo: #35c98d;
+  --memo-text: #0d7a52;
+  --think: #ffb020;
+  --think-text: #a05a00;
+  --none: #eceadf;
+  --font-display: "Dela Gothic One", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--cobalt-deep);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-weight: 500;
+}
+.game {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 12px 16px 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+.play { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+@media (min-width: 940px) {
+  .game { grid-template-columns: minmax(0, 1fr) 400px; align-items: start; }
+  .hud { grid-column: 1 / -1; }
+}
 
+/* HUD */
+.hud {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  color: var(--paper);
+}
+.hud h1 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 400;
+  margin: 0;
+  margin-right: auto;
+  letter-spacing: .02em;
+}
+.stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  letter-spacing: .08em;
+}
+.stat b {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 24px;
+  color: var(--pop);
+  font-variant-numeric: tabular-nums;
+  display: inline-block;
+  min-width: 1.4em;
+  text-align: right;
+}
+button, summary { font-family: var(--font-body); }
+.btn {
+  background: var(--paper);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+.btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+.btn[aria-pressed="false"] { background: #c9cbe0; }
+:focus-visible { outline: 3px solid var(--pop); outline-offset: 2px; }
+
+/* ステージ */
+.stage {
+  position: relative;
+  height: clamp(230px, 40vh, 360px);
+  overflow: hidden;
+  border: 4px solid var(--ink);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at center, rgba(255,255,255,.16) 2px, transparent 2.5px) 0 0 / 14px 14px,
+    var(--cobalt);
+  box-shadow: 6px 6px 0 var(--ink);
+}
+.burst {
+  position: absolute;
+  inset: -60%;
+  background: repeating-conic-gradient(from 0deg, transparent 0 5deg, rgba(255,255,255,.9) 5deg 7deg);
+  -webkit-mask-image: radial-gradient(circle, transparent 22%, #000 60%);
+          mask-image: radial-gradient(circle, transparent 22%, #000 60%);
+  opacity: .1;
+  pointer-events: none;
+}
+.enemy-info {
+  position: absolute;
+  top: 12px; left: 14px; right: 14px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.enemy-name {
+  font-family: var(--font-display);
+  color: var(--paper);
+  font-size: 18px;
+  text-shadow: 2px 2px 0 var(--ink);
+}
+.hp {
+  height: 18px;
+  border: 3px solid var(--ink);
+  border-radius: 6px;
+  background: var(--ink);
+  overflow: hidden;
+  position: relative;
+}
+.hp i {
+  position: absolute; inset: 0;
+  transform-origin: left center;
+  display: block;
+}
+#hpLag { background: var(--paper); transition: transform .5s .15s ease-out; }
+#hpBar { background: var(--hit); transition: transform .08s linear; }
+
+.enemy-wrap {
+  position: absolute;
+  left: 0; right: 0; bottom: -4px;
+  height: min(86%, 430px);
+  display: flex;
+  justify-content: center;
+  transform-origin: 50% 100%;
+  z-index: 1;
+}
+.enemy {
+  height: 100%;
+  aspect-ratio: 1 / 1;
+  flex: none;
+  animation: breathe 2.4s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+.enemy[data-state="hit"], .enemy[data-state="ko"] { animation: none; }
+@keyframes breathe {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.012, 1.025); }
+}
+.enemy svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.enemy img {
+  display: none;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+}
+.enemy.has-img svg { display: none; }
+.enemy.has-img img { display: block; }
+.enemy.has-img.fallback-hit img { filter: brightness(1.25) saturate(1.3); }
+
+.ink { stroke: var(--ink); stroke-width: 6; stroke-linejoin: round; stroke-linecap: round; }
+.thin { stroke: var(--ink); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+.head { transform-box: fill-box; transform-origin: 50% 95%; transition: transform .05s; }
+.enemy[data-state="hit"] .head { transform: rotate(var(--tilt, 9deg)) translateY(3px); }
+.enemy[data-state="ko"] .head { transform: rotate(16deg) translateY(6px); }
+.face-hit, .face-ko { display: none; }
+.enemy[data-state="hit"] .face-idle, .enemy[data-state="ko"] .face-idle { display: none; }
+.enemy[data-state="hit"] .face-hit { display: inline; }
+.enemy[data-state="ko"] .face-ko { display: inline; }
+
+/* エフェクト層 */
+.fx { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.spark { position: absolute; translate: -50% -50%; }
+.spark svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.spark text { font-family: var(--font-display); fill: var(--ink); }
+.dmg {
+  position: absolute;
+  translate: -50% -50%;
+  font-family: var(--font-display);
+  color: var(--paper);
+  -webkit-text-stroke: 5px var(--ink);
+  paint-order: stroke fill;
+  font-size: 30px;
+  white-space: nowrap;
+}
+.dmg.big { font-size: 52px; color: var(--pop); }
+.bit {
+  position: absolute;
+  width: 12px; height: 12px;
+  background: var(--pop);
+  border: 2.5px solid var(--ink);
+  translate: -50% -50%;
+}
+.twinkle { position: absolute; width: 130px; height: 130px; translate: -50% -50%; }
+.twinkle svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.flash {
+  position: absolute; inset: 0; z-index: 5;
+  background: #fff; opacity: 0; pointer-events: none;
+}
+.ko-banner {
+  position: absolute; inset: 0; z-index: 6;
+  display: grid; place-items: center;
+  font-family: var(--font-display);
+  font-size: clamp(64px, 20vw, 150px);
+  color: var(--pop);
+  -webkit-text-stroke: 12px var(--ink);
+  paint-order: stroke fill;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 問題パネル */
+.panel, .records {
+  background: var(--paper);
+  border: 4px solid var(--ink);
+  border-radius: 12px;
+  box-shadow: 6px 6px 0 var(--ink);
+}
+.panel {
+  padding: 12px 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.question {
+  font-family: var(--font-display);
+  font-size: clamp(40px, 10vw, 64px);
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.question .typed { color: var(--hit); }
+.question .caret { color: #b9bbcc; animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.judge { min-height: 1.7em; font-size: 15px; font-weight: 700; color: var(--muted); }
+.judge b { font-family: var(--font-display); font-weight: 400; font-size: 18px; margin-right: 6px; }
+.judge.memo b { color: var(--memo-text); }
+.judge.think b { color: var(--think-text); }
+.judge.miss b { color: var(--hit); }
+
+.keypad { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.keypad .btn { font-family: var(--font-display); font-weight: 400; font-size: 22px; padding: 8px 0; }
+
+/* 記録 */
+.records { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 14px; }
+.records h2 { font-family: var(--font-display); font-weight: 400; font-size: 18px; margin: 0; }
+.records h3 { font-size: 13px; margin: 0 0 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; font-weight: 700; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.sw { width: 14px; height: 14px; border: 2px solid var(--ink); border-radius: 3px; display: inline-block; }
+.s-memo { background: var(--memo); }
+.s-think { background: var(--think); }
+.s-miss { background: var(--hit); color: #fff; }
+.s-none { background: var(--none); }
+.kuku { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; }
+.kuku .h {
+  display: grid; place-items: center;
+  font-family: var(--font-display); font-size: 13px; color: var(--muted);
+}
+.kuku button {
+  aspect-ratio: 1 / 1;
+  border: 2px solid var(--ink);
+  border-radius: 5px;
+  padding: 0;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  cursor: pointer;
+}
+.kuku button.s-miss { color: #fff; }
+.kuku button.s-none { border-color: #c9c6b8; }
+.kuku button[aria-pressed="true"] { outline: 3px solid var(--cobalt); outline-offset: 1px; }
+.detail { font-size: 13px; line-height: 1.6; min-height: 3.2em; margin: 0; color: var(--muted); }
+.detail b { color: var(--ink); }
+.weak { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.weak li { border: 2px solid var(--ink); border-radius: 999px; padding: 2px 10px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.weak li.empty { border: 0; padding: 0; font-weight: 500; color: var(--muted); }
+.setting label { font-size: 13px; font-weight: 700; display: block; margin-bottom: 4px; }
+.setting input[type="range"] { width: 100%; accent-color: var(--cobalt); }
+.dans { display: flex; flex-wrap: wrap; gap: 6px; }
+.dans .btn { padding: 4px 0; width: 36px; box-shadow: 2px 2px 0 var(--ink); }
+.dans .btn[aria-pressed="true"] { background: var(--pop); }
+.foot { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.foot p { margin: 0; font-size: 12px; color: var(--muted); flex: 1 1 180px; line-height: 1.5; }
+
+/* 画像差し替え */
+.swap { font-size: 13px; }
+.swap summary { font-weight: 700; cursor: pointer; }
+.swap-body { display: flex; flex-wrap: wrap; gap: 10px 20px; padding: 10px 0 4px; }
+.swap label { display: flex; flex-direction: column; gap: 4px; font-weight: 700; }
+.swap input[type="file"] { font-family: var(--font-body); font-size: 12px; max-width: 220px; }
+.swap p { margin: 0; flex-basis: 100%; color: var(--muted); line-height: 1.6; }
+
+@media (max-width: 480px) {
+  .hud h1 { font-size: 18px; flex-basis: 100%; }
+}
+
+/* だれが遊ぶ？ */
+.who {
+  position: fixed; inset: 0; z-index: 20;
+  background: rgba(23, 47, 154, .94);
+  display: grid; place-items: center;
+  padding: 16px;
+  overflow: auto;
+}
+.who[hidden] { display: none; }
+.who-card {
+  width: min(100%, 420px);
+  background: var(--paper);
+  border: 4px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: 8px 8px 0 var(--ink);
+  padding: 20px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.who-card h2 { font-family: var(--font-display); font-weight: 400; font-size: 26px; margin: 0; text-align: center; }
+.who-list { display: flex; flex-direction: column; gap: 10px; }
+.who-row { display: flex; gap: 8px; align-items: stretch; }
+.who-row .pick {
+  flex: 1; min-width: 0;
+  display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  padding: 12px 14px; font-size: 20px; text-align: left;
+}
+.who-row .pick.last { background: var(--pop); }
+.who-row .pick span { overflow-wrap: anywhere; }
+.who-row .pick small { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.who-row .del { font-size: 12px; padding: 4px 10px; box-shadow: 2px 2px 0 var(--ink); }
+.who-form label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.who-form .row { display: flex; gap: 8px; }
+.who-form input {
+  flex: 1; min-width: 0;
+  font-family: var(--font-body); font-size: 18px; font-weight: 700;
+  padding: 8px 10px; border: 3px solid var(--ink); border-radius: 8px; background: #fff; color: var(--ink);
+}
+.who-note { margin: 0; font-size: 13px; color: var(--hit); font-weight: 700; min-height: 1.4em; }
+#whoBtn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+</head>
+<body>
+<main class="game">
+  <header class="hud">
+    <h1>九九パンチ</h1>
+    <button class="btn" id="whoBtn" type="button">名前をえらぶ</button>
+    <div class="stat">れんぞく <b id="combo">0</b></div>
+    <div class="stat">KO <b id="koCount">0</b></div>
+    <button class="btn" id="soundBtn" type="button" aria-pressed="true">音 ON</button>
+  </header>
+
+  <div class="play">
+  <section class="stage" id="stage" aria-label="敵">
+    <div class="burst" id="burst"></div>
+    <div class="enemy-info">
+      <div class="enemy-name" id="enemyName">ねむけ大王</div>
+      <div class="hp" role="img" aria-label="敵の体力"><i id="hpLag"></i><i id="hpBar"></i></div>
+    </div>
+
+    <div class="enemy-wrap" id="enemyWrap">
+      <div class="enemy" id="enemy" data-state="idle">
+        <svg viewBox="0 0 300 300" aria-hidden="true">
+          <!-- 胴体 -->
+          <path class="ink" id="shirt" fill="#ff8a3d" d="M34 306 C34 232 88 206 150 206 C212 206 266 232 266 306 Z"/>
+          <path class="thin" d="M118 210 L150 246 L182 210"/>
+          <!-- 首 -->
+          <path class="ink skin" fill="#f6c9a0" d="M128 168 L128 214 Q150 232 172 214 L172 168 Z"/>
+          <!-- 頭 -->
+          <g class="head">
+            <ellipse class="ink skin" fill="#f6c9a0" cx="86" cy="122" rx="12" ry="17"/>
+            <ellipse class="ink skin" fill="#f6c9a0" cx="214" cy="122" rx="12" ry="17"/>
+            <ellipse class="ink skin" fill="#f6c9a0" cx="150" cy="116" rx="64" ry="72"/>
+            <path class="ink" id="hair" fill="#2b2140" d="M86 104 C80 52 116 30 152 32 C196 34 222 60 214 106 C200 84 180 70 150 72 C120 70 100 84 86 104 Z"/>
+
+            <g class="face-idle">
+              <path class="thin" d="M108 98 L138 108"/>
+              <path class="thin" d="M192 98 L162 108"/>
+              <circle cx="125" cy="122" r="8" fill="#14110f"/>
+              <circle cx="175" cy="122" r="8" fill="#14110f"/>
+              <path class="thin" d="M126 160 Q150 172 178 154"/>
+            </g>
+
+            <g class="face-hit">
+              <path class="thin" d="M112 112 L134 123 L112 134"/>
+              <path class="thin" d="M188 112 L166 123 L188 134"/>
+              <ellipse class="ink" fill="#7a1220" cx="152" cy="164" rx="17" ry="13"/>
+              <circle cx="192" cy="150" r="16" fill="#ff3b30" opacity=".55"/>
+              <path d="M222 70 q10 16 0 22 q-10 -6 0 -22Z" fill="#9fd8ff" class="ink" style="stroke-width:4"/>
+              <path d="M74 60 q8 13 0 18 q-8 -5 0 -18Z" fill="#9fd8ff" class="ink" style="stroke-width:4"/>
+            </g>
+
+            <g class="face-ko">
+              <path class="thin" d="M112 110 L138 134 M138 110 L112 134"/>
+              <path class="thin" d="M162 110 L188 134 M188 110 L162 134"/>
+              <path class="thin" d="M122 164 q8 -9 14 0 q8 9 14 0 q8 -9 14 0 q8 9 14 0"/>
+              <circle cx="192" cy="150" r="18" fill="#ff3b30" opacity=".6"/>
+            </g>
+          </g>
+        </svg>
+        <img id="enemyImg" alt="">
+      </div>
+    </div>
+
+    <div class="fx" id="fx"></div>
+    <div class="flash" id="flash"></div>
+    <div class="ko-banner" id="koBanner">K.O.!</div>
+  </section>
+
+  <section class="panel">
+    <div class="question" id="question" aria-live="polite"></div>
+    <div class="judge" id="judge">数字キーか下のボタンで答えよう。速く答えるほど強いパンチ！</div>
+  </section>
+  <div class="keypad" id="keypad" aria-label="数字ボタン"></div>
+  </div>
+
+  <aside class="records">
+    <h2>九九の記録</h2>
+    <div class="legend" id="legend"></div>
+    <div class="kuku" id="kuku" aria-label="九九の表。たてが段、よこがかける数"></div>
+    <p class="detail" id="detail">マスを押すと、その九九の記録が見られます。数字は最近3回の平均秒数です。</p>
+    <div>
+      <h3>にがてな九九</h3>
+      <ul class="weak" id="weak"></ul>
+    </div>
+    <div class="setting">
+      <label for="th">暗記とみなす速さ：<span id="thVal"></span>秒より速い</label>
+      <input id="th" type="range" min="1" max="5" step="0.5">
+    </div>
+    <div class="setting">
+      <h3>出題する段</h3>
+      <div class="dans" id="dans"></div>
+    </div>
+    <div class="foot">
+      <button class="btn" id="resetBtn" type="button">記録を消す</button>
+      <p>いま遊んでいる人の記録だけ消します。記録はこのブラウザの中だけに保存されます。</p>
+    </div>
+    <details class="swap">
+      <summary>敵の画像を自分の絵に差し替える</summary>
+      <div class="swap-body">
+        <label for="imgIdle">通常<input id="imgIdle" type="file" accept="image/*"></label>
+        <label for="imgHit">殴られ顔<input id="imgHit" type="file" accept="image/*"></label>
+        <label for="imgKo">KO<input id="imgKo" type="file" accept="image/*"></label>
+        <button class="btn" id="imgReset" type="button">仮の絵に戻す</button>
+        <p>背景が透明な正方形のPNGがきれいに収まります。通常の1枚だけでも動きます。</p>
+      </div>
+    </details>
+  </aside>
+</main>
+
+<div class="who" id="who" role="dialog" aria-modal="true" aria-labelledby="whoTitle">
+  <div class="who-card">
+    <h2 id="whoTitle">だれが遊ぶ？</h2>
+    <div class="who-list" id="whoList"></div>
+    <form class="who-form" id="whoForm">
+      <label for="whoName">名前を追加（3人まで）</label>
+      <div class="row">
+        <input id="whoName" type="text" maxlength="8" autocomplete="off" placeholder="なまえ">
+        <button class="btn" type="submit">追加して開始</button>
+      </div>
+    </form>
+    <p class="who-note" id="whoNote" aria-live="polite"></p>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), enemyWrap = $('enemyWrap'), enemy = $('enemy'), fx = $('fx');
+  const flash = $('flash'), burst = $('burst'), koBanner = $('koBanner');
+  const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const M = REDUCED ? 0.25 : 1;           // 演出の強さ。ここを変えると全体の派手さが変わる
+
+  const ENEMIES = [
+    { name: 'ねむけ大王',     hp: 60,  shirt: '#ff8a3d', hair: '#2b2140', skin: '#f6c9a0' },
+    { name: '月曜日のあくま', hp: 80,  shirt: '#8e5bff', hair: '#7a1220', skin: '#e9b48a' },
+    { name: 'しめきり番長',   hp: 100, shirt: '#1fb37a', hair: '#14110f', skin: '#f2d3b3' },
+  ];
+  const SFX_JAB = ['ペシ', 'パシ', 'ポコ', 'ビシ'];
+  const SFX_HEAVY = ['ドカッ', 'バキッ', 'ボコッ', 'ズドン'];
+
+  let enemyIdx = 0, hp = ENEMIES[0].hp, maxHp = ENEMIES[0].hp;
+  let combo = 0, kos = 0, locked = false, dir = 1;
+  let stateTimer = 0;
+  const images = { idle: null, hit: null, ko: null };
+
+  /* ---------- 音（Web Audioで合成） ---------- */
+  let audio = null, soundOn = true;
+  function ac() {
+    if (!soundOn) return null;
+    try {
+      if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+      return audio;
+    } catch (e) { return null; }
+  }
+  function thump(power) {
+    const a = ac(); if (!a) return;
+    try {
+      const t = a.currentTime, len = 0.1 + 0.12 * power;
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(190 - 50 * power, t);
+      o.frequency.exponentialRampToValueAtTime(42, t + len);
+      g.gain.setValueAtTime(0.5 + 0.4 * power, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + len);
+      o.connect(g).connect(a.destination); o.start(t); o.stop(t + len);
+      // 打撃の「パン」という成分（ノイズ）
+      const n = Math.floor(a.sampleRate * 0.07);
+      const buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+      const src = a.createBufferSource(), f = a.createBiquadFilter(), ng = a.createGain();
+      src.buffer = buf; f.type = 'lowpass'; f.frequency.value = 900 + 1800 * power;
+      ng.gain.value = 0.25 + 0.35 * power;
+      src.connect(f).connect(ng).connect(a.destination); src.start(t);
+    } catch (e) {}
+  }
+  function blip() {
+    const a = ac(); if (!a) return;
+    try {
+      const t = a.currentTime, o = a.createOscillator(), g = a.createGain();
+      o.type = 'square'; o.frequency.value = 130;
+      g.gain.setValueAtTime(0.06, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+      o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.08);
+    } catch (e) {}
+  }
+
+  function ping() {                       // 星になる「キラーン」
+    const a = ac(); if (!a) return;
+    try {
+      const t = a.currentTime;
+      [1760, 2640].forEach((f, i) => {
+        const o = a.createOscillator(), g = a.createGain();
+        o.type = 'sine'; o.frequency.setValueAtTime(f, t + i * 0.06);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.setValueAtTime(0.16, t + i * 0.06);
+        g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.06 + 0.5);
+        o.connect(g).connect(a.destination); o.start(t + i * 0.06); o.stop(t + i * 0.06 + 0.5);
+      });
+    } catch (e) {}
+  }
+
+  /* ---------- 表示 ---------- */
+  function setState(s) {
+    enemy.dataset.state = s;
+    if (images.idle) {
+      $('enemyImg').src = images[s] || images.idle;
+      enemy.classList.toggle('fallback-hit', s !== 'idle' && !images[s]);
+    }
+  }
+  function renderHp() {
+    const r = Math.max(0, hp) / maxHp;
+    $('hpBar').style.transform = $('hpLag').style.transform = 'scaleX(' + r + ')';
+  }
+  function renderStats(bump) {
+    const c = $('combo'); c.textContent = combo; $('koCount').textContent = kos;
+    if (bump && combo > 1) c.animate([{ transform: 'scale(1.5)' }, { transform: 'scale(1)' }], { duration: 140 });
+  }
+  function loadEnemy() {
+    const e = ENEMIES[enemyIdx % ENEMIES.length];
+    maxHp = hp = e.hp + 20 * Math.floor(enemyIdx / ENEMIES.length);
+    $('enemyName').textContent = e.name;
+    $('shirt').setAttribute('fill', e.shirt);
+    $('hair').setAttribute('fill', e.hair);
+    document.querySelectorAll('.skin').forEach(n => n.setAttribute('fill', e.skin));
+    setState('idle'); renderHp();
+  }
+
+  /* ---------- 殴られ演出の部品 ---------- */
+  const rand = (a, b) => a + Math.random() * (b - a);
+  function hitPoint() {
+    const s = stage.getBoundingClientRect(), e = enemy.getBoundingClientRect();
+    return {
+      x: e.left - s.left + e.width * (0.5 - dir * 0.1 + rand(-0.1, 0.1)),
+      y: e.top - s.top + e.height * rand(0.28, 0.5),
+    };
+  }
+  function recoil(p) {
+    const d = dir, k = p * M;
+    enemyWrap.animate([
+      { transform: 'translate(0,0) rotate(0deg) scale(1,1)' },
+      { transform: `translate(${d * 34 * k}px,${-8 * k}px) rotate(${d * 11 * k}deg) scale(${1 - 0.09 * k},${1 + 0.07 * k})`, offset: 0.18 },
+      { transform: `translate(${-d * 9 * k}px,0) rotate(${-d * 3 * k}deg) scale(${1 + 0.04 * k},${1 - 0.04 * k})`, offset: 0.55 },
+      { transform: 'translate(0,0) rotate(0deg) scale(1,1)' },
+    ], { duration: 240 + 160 * p, easing: 'cubic-bezier(.2,.9,.3,1)' });
+  }
+  function shake(p) {
+    const k = 10 * p * M, f = [];
+    for (let i = 0; i < 6; i++) f.push({ transform: `translate(${rand(-k, k)}px,${rand(-k, k)}px)` });
+    f.push({ transform: 'translate(0,0)' });
+    stage.animate(f, { duration: 120 + 160 * p });
+  }
+  function flashScreen(p) {
+    if (REDUCED) return;
+    flash.animate([{ opacity: 0.75 * p }, { opacity: 0 }], { duration: 160 });
+    burst.animate([{ opacity: 0.1 }, { opacity: 0.75 }, { opacity: 0.1 }], { duration: 380 });
+  }
+  function star(spikes, jitter) {
+    const pts = [];
+    for (let i = 0; i < spikes * 2; i++) {
+      const r = (i % 2 ? 27 : 48) * (1 + rand(-jitter, jitter)), a = Math.PI * i / spikes;
+      pts.push((50 + Math.cos(a) * r).toFixed(1) + ',' + (50 + Math.sin(a) * r).toFixed(1));
+    }
+    return pts.join(' ');
+  }
+  function spark(pt, heavy) {
+    const el = document.createElement('div');
+    el.className = 'spark';
+    const size = heavy ? 210 : 96;
+    el.style.cssText = `left:${pt.x}px;top:${pt.y}px;width:${size}px;height:${size}px`;
+    const label = (heavy ? SFX_HEAVY : SFX_JAB)[Math.floor(Math.random() * 4)];
+    el.innerHTML = `<svg viewBox="0 0 100 100">
+      <polygon points="${star(heavy ? 11 : 8, 0.14)}" fill="${heavy ? '#ff3b30' : '#ffd60a'}" stroke="#14110f" stroke-width="${heavy ? 3 : 5}" stroke-linejoin="round"/>
+      ${heavy ? `<polygon points="${star(11, 0.1)}" fill="#ffd60a" transform="translate(50 50) scale(.72) translate(-50 -50)"/>` : ''}
+      <text x="50" y="${heavy ? 56 : 58}" text-anchor="middle" font-size="${heavy ? 15 : 20}">${label}</text></svg>`;
+    fx.appendChild(el);
+    const rot = rand(-18, 18);
+    el.animate([
+      { transform: `scale(.35) rotate(${rot}deg)`, opacity: 1 },
+      { transform: `scale(1.15) rotate(${rot}deg)`, opacity: 1, offset: 0.25 },
+      { transform: `scale(1) rotate(${rot}deg)`, opacity: 1, offset: 0.7 },
+      { transform: `scale(1.1) rotate(${rot}deg)`, opacity: 0 },
+    ], { duration: heavy ? 480 : 260, easing: 'ease-out' }).onfinish = () => el.remove();
+  }
+  function bits(pt, n) {
+    for (let i = 0; i < n; i++) {
+      const b = document.createElement('div');
+      b.className = 'bit';
+      b.style.left = pt.x + 'px'; b.style.top = pt.y + 'px';
+      fx.appendChild(b);
+      const a = rand(0, Math.PI * 2), r = rand(60, 170) * (0.5 + M / 2);
+      b.animate([
+        { transform: 'translate(0,0) rotate(0deg) scale(1)', opacity: 1 },
+        { transform: `translate(${Math.cos(a) * r}px,${Math.sin(a) * r + 50}px) rotate(${rand(-300, 300)}deg) scale(.3)`, opacity: 0 },
+      ], { duration: rand(380, 620), easing: 'cubic-bezier(.1,.7,.3,1)' }).onfinish = () => b.remove();
+    }
+  }
+  function dmgNumber(pt, n, big) {
+    const el = document.createElement('div');
+    el.className = 'dmg' + (big ? ' big' : '');
+    el.textContent = '-' + n;
+    el.style.left = (pt.x + dir * 40) + 'px'; el.style.top = (pt.y - 30) + 'px';
+    fx.appendChild(el);
+    el.animate([
+      { transform: 'translateY(0) scale(.6)', opacity: 1 },
+      { transform: 'translateY(-24px) scale(1.15)', opacity: 1, offset: 0.3 },
+      { transform: 'translateY(-70px) scale(1)', opacity: 0 },
+    ], { duration: big ? 800 : 520, easing: 'ease-out' }).onfinish = () => el.remove();
+  }
+
+  /* ---------- 殴る ---------- */
+  function hit(heavy) {
+    dir = -dir;
+    const dmg = heavy ? 10 + Math.round(Math.min(combo, 15) / 3) : 4;
+    hp -= dmg; renderHp();
+    const ko = hp <= 0, pt = hitPoint(), p = ko ? 1.4 : heavy ? 1 : 0.35;
+
+    enemy.style.setProperty('--tilt', (dir * (heavy ? 13 : 7)) + 'deg');
+    setState(ko ? 'ko' : 'hit');
+    clearTimeout(stateTimer);
+    spark(pt, heavy || ko);
+    dmgNumber(pt, dmg, heavy || ko);
+    thump(Math.min(p, 1));
+
+    if (!heavy && !ko) {                  // ジャブ：即座に軽く
+      recoil(p); shake(p); bits(pt, 2);
+      stateTimer = setTimeout(() => setState('idle'), 150);
+      return false;
+    }
+    // ストレート：ヒットストップで一瞬止めてから吹っ飛ばす
+    flashScreen(ko ? 1 : 0.7);
+    bits(pt, ko ? 16 : 9);
+    setTimeout(() => {
+      shake(p);
+      if (ko) knockout(); else { recoil(p); stateTimer = setTimeout(() => setState('idle'), 360); }
+    }, ko ? 150 : 70);
+    return ko;
+  }
+  const FLY = 850;      // 奥へ飛んでいく時間（ミリ秒）
+  function twinkle(pt) {
+    ping();
+    const el = document.createElement('div');
+    el.className = 'twinkle';
+    el.style.left = pt.x + 'px'; el.style.top = pt.y + 'px';
+    el.innerHTML = '<svg viewBox="0 0 100 100"><path d="M50 0 Q54 46 100 50 Q54 54 50 100 Q46 54 0 50 Q46 46 50 0Z" fill="#fffdf5" stroke="#14110f" stroke-width="2.5" stroke-linejoin="round"/></svg>';
+    fx.appendChild(el);
+    el.animate([
+      { transform: 'scale(0) rotate(0deg)', opacity: 1 },
+      { transform: 'scale(1.35) rotate(40deg)', opacity: 1, offset: 0.35 },
+      { transform: 'scale(.5) rotate(70deg)', opacity: 1, offset: 0.75 },
+      { transform: 'scale(0) rotate(90deg)', opacity: 0 },
+    ], { duration: 520, easing: 'ease-out' }).onfinish = () => el.remove();
+  }
+  function knockout() {
+    kos++; renderStats(false);
+    setTimeout(() => thump(1), 90);
+    const d = dir, g = gen;
+    // 画面の奥（消失点）へ飛んでいって星になる
+    const sr = stage.getBoundingClientRect(), wr = enemyWrap.getBoundingClientRect();
+    const star = { x: sr.width * (0.5 + d * 0.2), y: sr.height * 0.34 };          // 星になる位置（ステージ内）
+    const tx = sr.left + star.x - (wr.left + wr.width / 2), ty = sr.top + star.y - wr.bottom;
+    const spin = REDUCED ? 0 : d * 720;
+    enemyWrap.animate([
+      { transform: 'translate(0px,0px) rotate(0deg) scale(1)', opacity: 1 },
+      { transform: `translate(${d * 18}px,-26px) rotate(${d * 24}deg) scale(1.12)`, opacity: 1, offset: 0.1 },
+      { transform: `translate(${tx}px,${ty}px) rotate(${spin}deg) scale(.03)`, opacity: 1, offset: 0.96 },
+      { transform: `translate(${tx}px,${ty}px) rotate(${spin}deg) scale(.01)`, opacity: 0 },
+    ], { duration: FLY, easing: 'cubic-bezier(.15,.6,.25,1)', fill: 'forwards' });
+    setTimeout(() => { if (g === gen) twinkle(star); }, FLY - 40);
+    koBanner.animate([
+      { opacity: 0, transform: 'scale(2.4) rotate(-8deg)' },
+      { opacity: 1, transform: 'scale(1) rotate(-8deg)', offset: 0.12 },
+      { opacity: 1, transform: 'scale(1.04) rotate(-8deg)', offset: 0.85 },
+      { opacity: 0, transform: 'scale(1.1) rotate(-8deg)' },
+    ], { duration: 760, delay: FLY + 40, easing: 'ease-out' });   // 星になってから出す
+    setTimeout(() => {
+      if (g !== gen) return;               // 途中で交代していたら何もしない
+      enemyWrap.getAnimations().forEach(a => a.cancel());
+      enemyIdx++; loadEnemy(); nextQuestion();
+      enemyWrap.animate([
+        { transform: 'translateY(60%)' }, { transform: 'translateY(-4%)', offset: 0.7 }, { transform: 'translateY(0)' },
+      ], { duration: 380, easing: 'ease-out' });
+      locked = false;
+    }, 1650);
+  }
+
+  /* ---------- 記録（localStorage） ---------- */
+  const KEY = 'kuku-punch-v2', OLD_KEY = 'kuku-punch-v1';
+  const MAX_PLAYERS = 3;
+  const KEEP = 5;       // マスごとに残す回数
+  const RECENT = 3;     // 判定に使う直近の回数
+  const TOO_LONG = 30000; // これより長い回答は席を外したとみなして記録しない
+  const ALL_DANS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {} });
+  function clean(p) {            // 保存データが壊れていても動くように整える
+    if (!p || typeof p !== 'object') return null;
+    const out = newProfile(String(p.name || 'プレイヤー').slice(0, 8));
+    if (p.id) out.id = String(p.id);
+    if (p.th >= 1000 && p.th <= 5000) out.th = p.th;
+    if (Array.isArray(p.dans)) { const d = p.dans.filter(n => n >= 1 && n <= 9); if (d.length) out.dans = d; }
+    if (p.cells && typeof p.cells === 'object') out.cells = p.cells;
+    return out;
+  }
+  let store = { profiles: [], last: null };
+  try {
+    const d = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (d && Array.isArray(d.profiles)) {
+      store.profiles = d.profiles.map(clean).filter(Boolean).slice(0, MAX_PLAYERS);
+      store.last = d.last || null;
+    } else {
+      // 名前なしで遊んでいた頃の記録があれば、1人目として引き継ぐ
+      const old = JSON.parse(localStorage.getItem(OLD_KEY) || 'null');
+      if (old && old.cells && Object.keys(old.cells).length) store.profiles.push(clean(Object.assign({ name: 'プレイヤー1' }, old)));
+    }
+  } catch (e) {}
+  let data = store.profiles.find(p => p.id === store.last) || newProfile('');   // いま遊んでいる人
+  let paused = true, gen = 0;
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} }
+  const cellKey = (a, b) => a + 'x' + b;
+  function record(a, b, ms, ok) {
+    const c = data.cells[cellKey(a, b)] || (data.cells[cellKey(a, b)] = { n: 0, miss: 0, log: [] });
+    c.n++; if (!ok) c.miss++;
+    c.log.push([Math.round(ms), ok ? 1 : 0]);
+    if (c.log.length > KEEP) c.log.shift();
+    save();
+  }
+  // マスの状態：none=まだ / memo=暗記 / think=考えてる / miss=まちがえた
+  function cellInfo(a, b, who = data) {
+    const c = who.cells[cellKey(a, b)];
+    if (!c || !Array.isArray(c.log) || !c.log.length) return { s: 'none', avg: 0, n: 0, miss: 0 };
+    const r = c.log.slice(-RECENT);
+    const avg = r.reduce((t, x) => t + x[0], 0) / r.length;
+    const s = r.some(x => !x[1]) ? 'miss' : avg < who.th ? 'memo' : 'think';
+    return { s, avg, n: c.n, miss: c.miss };
+  }
+  const sec = ms => (ms / 1000).toFixed(1);
+  const LABEL = { memo: '暗記', think: '考えてる', miss: 'まちがえた', none: 'まだ' };
+
+  let selected = null;
+  function renderRecords() {
+    const count = { memo: 0, think: 0, miss: 0, none: 0 }, weak = [];
+    const grid = $('kuku'); grid.textContent = '';
+    const head = t => { const d = document.createElement('div'); d.className = 'h'; d.textContent = t; grid.appendChild(d); };
+    head('×'); for (let b = 1; b <= 9; b++) head(b);
+    for (let a = 1; a <= 9; a++) {
+      head(a);
+      for (let b = 1; b <= 9; b++) {
+        const i = cellInfo(a, b); count[i.s]++;
+        if (i.s === 'miss' || i.s === 'think') weak.push({ a, b, i });
+        const el = document.createElement('button');
+        el.type = 'button'; el.className = 's-' + i.s;
+        el.textContent = i.s === 'none' ? '' : sec(i.avg);
+        el.setAttribute('aria-label', `${a}×${b} ${LABEL[i.s]}` + (i.n ? ` 平均${sec(i.avg)}秒` : ''));
+        el.setAttribute('aria-pressed', String(selected === cellKey(a, b)));
+        el.addEventListener('click', () => { selected = cellKey(a, b); renderRecords(); });
+        grid.appendChild(el);
+      }
+    }
+    $('legend').innerHTML = ['memo', 'think', 'miss', 'none'].map(s =>
+      `<span><i class="sw s-${s}"></i>${LABEL[s]} ${count[s]}</span>`).join('');
+    weak.sort((x, y) => (y.i.s === 'miss') - (x.i.s === 'miss') || y.i.avg - x.i.avg);
+    $('weak').innerHTML = weak.length
+      ? weak.slice(0, 6).map(w => `<li class="s-${w.i.s}">${w.a}×${w.b}　${sec(w.i.avg)}秒</li>`).join('')
+      : `<li class="empty">${count.none === 81 ? '遊ぶとここに出てきます。' : 'いまはありません。すごい！'}</li>`;
+    if (selected) {
+      const [a, b] = selected.split('x').map(Number), i = cellInfo(a, b);
+      $('detail').innerHTML = `<b>${a} × ${b} = ${a * b}</b>　${LABEL[i.s]}<br>` + (i.n
+        ? `最近の平均 ${sec(i.avg)}秒 ／ 挑戦 ${i.n}回 ／ まちがい ${i.miss}回`
+        : 'まだ出題されていません。');
+    }
+    $('thVal').textContent = sec(data.th);
+  }
+
+  /* ---------- 出題 ---------- */
+  let q = { a: 1, b: 1 }, typed = '', missed = false, qStart = 0, qValid = true;
+  const WEIGHT = { none: 3, miss: 6, think: 4, memo: 1 };   // にがてなマスほど出やすい
+  function nextQuestion() {
+    const pool = [];
+    data.dans.forEach(a => { for (let b = 1; b <= 9; b++) if (!(a === q.a && b === q.b)) pool.push({ a, b, w: WEIGHT[cellInfo(a, b).s] }); });
+    let r = Math.random() * pool.reduce((t, p) => t + p.w, 0);
+    q = pool.find(p => (r -= p.w) < 0) || pool[pool.length - 1];
+    typed = ''; missed = false; qValid = !document.hidden; qStart = performance.now();
+    renderQuestion();
+  }
+  function renderQuestion() {
+    $('question').innerHTML = `${q.a} × ${q.b} = <span class="typed">${typed}</span><span class="caret">?</span>`;
+  }
+  function judge(cls, head, text) {
+    const j = $('judge'); j.className = 'judge ' + cls;
+    j.innerHTML = `<b>${head}</b>${text}`;
+    j.animate([{ transform: 'scale(1.25)' }, { transform: 'scale(1)' }], { duration: 160 });
+  }
+  document.addEventListener('visibilitychange', () => { if (document.hidden) qValid = false; });
+
+  function handleDigit(d) {
+    if (locked || paused) return;
+    ac();
+    const ans = String(q.a * q.b);
+    if (!ans.startsWith(typed + d)) {            // まちがい：答えを見せて打ち直し
+      missed = true; typed = ''; combo = 0; renderStats(false); blip(); renderQuestion();
+      judge('miss', 'ちがうよ', `こたえは ${ans}。打ってみよう`);
+      $('question').animate([
+        { transform: 'translateX(-8px)' }, { transform: 'translateX(8px)' },
+        { transform: 'translateX(-4px)' }, { transform: 'translateX(0)' },
+      ], { duration: 160 });
+      return;
+    }
+    typed += d; renderQuestion();
+    if (typed !== ans) return;
+
+    const ms = performance.now() - qStart;
+    const counted = qValid && ms < TOO_LONG;
+    if (counted) record(q.a, q.b, ms, !missed);
+    const fast = !missed && ms < data.th;
+    if (missed) judge('miss', 'つぎは一発で', `${q.a} × ${q.b} = ${ans}`);
+    else if (fast) judge('memo', '暗記！', `${sec(ms)}秒`);
+    else judge('think', '考えた', `${sec(ms)}秒` + (counted ? '' : '（記録なし）'));
+    if (!missed) { combo++; renderStats(true); }
+    renderRecords();
+    const ko = hit(fast);
+    if (ko || hp <= 0) { locked = true; return; }
+    nextQuestion();
+  }
+  document.addEventListener('keydown', e => {
+    if (paused || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (/^[0-9]$/.test(e.key)) {
+      if (e.target && e.target.type === 'range') return;
+      e.preventDefault(); handleDigit(e.key);
+    }
+  });
+  [1, 2, 3, 4, 5, 6, 7, 8, 9, 0].forEach(n => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn'; b.textContent = n;
+    b.addEventListener('click', () => { handleDigit(String(n)); b.blur(); });
+    $('keypad').appendChild(b);
+  });
+
+  /* ---------- 設定 ---------- */
+  $('th').value = data.th / 1000;
+  $('th').addEventListener('input', e => { data.th = Number(e.target.value) * 1000; save(); renderRecords(); });
+  function renderDans() {
+    const box = $('dans'); box.textContent = '';
+    for (let a = 1; a <= 9; a++) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'btn'; b.textContent = a;
+      b.setAttribute('aria-label', a + 'の段');
+      b.setAttribute('aria-pressed', String(data.dans.includes(a)));
+      b.addEventListener('click', () => {
+        const on = data.dans.includes(a);
+        if (on && data.dans.length === 1) return;          // 1つは残す
+        data.dans = on ? data.dans.filter(x => x !== a) : data.dans.concat(a).sort();
+        save(); renderDans();
+        if (!data.dans.includes(q.a) && !locked) nextQuestion();
+      });
+      box.appendChild(b);
+    }
+  }
+  let resetArmed = 0;
+  $('resetBtn').addEventListener('click', e => {
+    const btn = e.currentTarget;
+    if (!resetArmed) {
+      btn.textContent = 'もう一度押すと消えます';
+      resetArmed = setTimeout(() => { resetArmed = 0; btn.textContent = '記録を消す'; }, 3000);
+      return;
+    }
+    clearTimeout(resetArmed); resetArmed = 0; btn.textContent = '記録を消す';
+    data.cells = {}; selected = null; save(); renderRecords();
+    $('detail').textContent = '記録を消しました。';
+  });
+
+  /* ---------- だれが遊ぶ？ ---------- */
+  const HINT = '数字キーか下のボタンで答えよう。速く答えるほど強いパンチ！';
+  function memoCount(p) {
+    let n = 0;
+    for (let a = 1; a <= 9; a++) for (let b = 1; b <= 9; b++) if (cellInfo(a, b, p).s === 'memo') n++;
+    return n;
+  }
+  function startAs(p) {
+    data = p; store.last = p.id; save();
+    gen++; paused = false; locked = false; combo = 0; kos = 0; enemyIdx = 0; selected = null;
+    clearTimeout(stateTimer);
+    enemyWrap.getAnimations().forEach(a => a.cancel());
+    $('who').hidden = true;
+    $('whoBtn').textContent = p.name + '｜交代';
+    $('th').value = p.th / 1000;
+    $('detail').textContent = 'マスを押すと、その九九の記録が見られます。数字は最近3回の平均秒数です。';
+    $('judge').className = 'judge'; $('judge').textContent = HINT;
+    loadEnemy(); renderDans(); renderRecords(); renderStats(false); nextQuestion();
+  }
+  function openWho() {
+    paused = true;
+    const list = $('whoList'); list.textContent = '';
+    store.profiles.forEach(p => {
+      const row = document.createElement('div'); row.className = 'who-row';
+      const pick = document.createElement('button');
+      pick.type = 'button'; pick.className = 'btn pick' + (p.id === store.last ? ' last' : '');
+      const nm = document.createElement('span'); nm.textContent = p.name;
+      const info = document.createElement('small'); info.textContent = '暗記 ' + memoCount(p) + '/81';
+      pick.append(nm, info);
+      pick.addEventListener('click', () => startAs(p));
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'btn del'; del.textContent = '消す';
+      del.setAttribute('aria-label', p.name + 'の記録を消す');
+      let armed = 0;
+      del.addEventListener('click', () => {
+        if (!armed) {
+          del.textContent = '本当に消す';
+          armed = setTimeout(() => { armed = 0; del.textContent = '消す'; }, 3000);
+          return;
+        }
+        clearTimeout(armed);
+        store.profiles = store.profiles.filter(x => x !== p);
+        if (store.last === p.id) store.last = null;
+        save(); openWho();
+      });
+      row.append(pick, del); list.appendChild(row);
+    });
+    $('whoForm').hidden = store.profiles.length >= MAX_PLAYERS;
+    $('whoNote').textContent = '';
+    $('whoTitle').textContent = store.profiles.length ? 'だれが遊ぶ？' : '名前を入れてね';
+    $('who').hidden = false;
+    const first = list.querySelector('.pick.last') || list.querySelector('.pick') || $('whoName');
+    try { first.focus({ preventScroll: true }); } catch (e) {}
+  }
+  $('whoForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = $('whoName').value.trim().slice(0, 8);
+    if (!name) { $('whoNote').textContent = '名前を入れてください。'; return; }
+    if (store.profiles.some(p => p.name === name)) { $('whoNote').textContent = '同じ名前がもうあります。'; return; }
+    if (store.profiles.length >= MAX_PLAYERS) return;
+    const p = newProfile(name);
+    store.profiles.push(p); $('whoName').value = '';
+    startAs(p);
+  });
+  $('whoBtn').addEventListener('click', openWho);
+
+  $('soundBtn').addEventListener('click', e => {
+    soundOn = !soundOn;
+    e.currentTarget.setAttribute('aria-pressed', String(soundOn));
+    e.currentTarget.textContent = soundOn ? '音 ON' : '音 OFF';
+    if (soundOn) thump(0.4);
+    e.currentTarget.blur();
+  });
+
+  /* ---------- 画像の差し替え ---------- */
+  function bindImage(inputId, key) {
+    $(inputId).addEventListener('change', e => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      if (images[key]) URL.revokeObjectURL(images[key]);
+      images[key] = URL.createObjectURL(f);
+      if (images.idle) { enemy.classList.add('has-img'); setState(enemy.dataset.state); }
+    });
+  }
+  bindImage('imgIdle', 'idle'); bindImage('imgHit', 'hit'); bindImage('imgKo', 'ko');
+  $('imgReset').addEventListener('click', () => {
+    ['idle', 'hit', 'ko'].forEach(k => { if (images[k]) URL.revokeObjectURL(images[k]); images[k] = null; });
+    ['imgIdle', 'imgHit', 'imgKo'].forEach(id => { $(id).value = ''; });
+    enemy.classList.remove('has-img', 'fallback-hit');
+  });
+
+  // 開始時は必ず名前を選ぶ。後ろには前回の人の記録を表示しておく
+  loadEnemy(); renderDans(); renderRecords(); renderStats(false); nextQuestion();
+  openWho();
+})();
+</script>
+</body>
+</html>
