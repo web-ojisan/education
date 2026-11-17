@@ -29,6 +29,12 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
+/* タブレットで子供が連打しても画面が拡大しないようにする。
+   ページ全体：ダブルタップ拡大を止める（2本指での拡大は残す）
+   ゲーム画面とダイアログ：2本指での拡大も止める（両手で同時に押すと拡大あつかいになるため）。たてのスクロールは残す */
+html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+.game, .who { touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.who input { -webkit-user-select: text; user-select: text; }
 body {
   background: var(--cobalt-deep);
   color: var(--ink);
@@ -1741,6 +1747,12 @@ button, summary { font-family: var(--font-body); }
     enemy.classList.toggle('has-img', !!art);
     setState(enemy.dataset.state);
   });
+
+  // iPad・iPhone の Safari は上の指定だけでは2本指の拡大が止まらないことがあるので、ゲーム中だけ個別に止める
+  // （設定と記録の画面は、文字を大きくして読めるよう拡大を残す）
+  ['gesturestart', 'gesturechange'].forEach(t => document.addEventListener(t, e => {
+    if ($('settings').hidden) e.preventDefault();
+  }, { passive: false }));
 
   /* ---------- たて持ちの時のお知らせ ---------- */
   // スマホ・タブレットをたてに持っている間、よこむきをすすめる。よこにすると自動で消える
