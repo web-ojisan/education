@@ -186,6 +186,18 @@ button, summary { font-family: var(--font-body); }
 .head { transform-box: fill-box; transform-origin: 50% 95%; transition: transform .05s; }
 .enemy[data-state="hit"] .head { transform: rotate(var(--tilt, 9deg)) translateY(3px); }
 .enemy[data-state="ko"] .head { transform: rotate(16deg) translateY(6px); }
+/* 構えた拳: ふだんは小さく揺らし、殴られるとガードが開き、KOで下がる */
+.guard { transform-box: fill-box; transform-origin: 50% 100%; transition: transform .07s; }
+.guard-l { animation: guardL 1.2s ease-in-out infinite; }
+.guard-r { animation: guardR 1.2s ease-in-out infinite; }
+@keyframes guardL { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes guardR { 0%, 100% { transform: translateY(-4px); } 50% { transform: translateY(1px); } }
+.enemy[data-state="hit"] .guard, .enemy[data-state="ko"] .guard { animation: none; }
+.enemy[data-state="hit"] .guard-l { transform: translate(-14px, 12px) rotate(-12deg); }
+.enemy[data-state="hit"] .guard-r { transform: translate(14px, 12px) rotate(12deg); }
+.enemy[data-state="ko"] .guard-l { transform: translate(-20px, 46px) rotate(-22deg); }
+.enemy[data-state="ko"] .guard-r { transform: translate(20px, 46px) rotate(22deg); }
+@media (prefers-reduced-motion: reduce) { .guard-l, .guard-r { animation: none; } }
 .face-hit, .face-ko { display: none; }
 .enemy[data-state="hit"] .face-idle, .enemy[data-state="ko"] .face-idle { display: none; }
 .enemy[data-state="hit"] .face-hit { display: inline; }
@@ -214,6 +226,12 @@ button, summary { font-family: var(--font-body); }
   border: 2.5px solid var(--ink);
   translate: -50% -50%;
 }
+/* まちがえた時に敵が殴ってくる演出 */
+.punch { position: absolute; left: 50%; top: 56%; width: 150px; height: 150px; translate: -50% -50%; }
+.punch svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.punch .ink { stroke-width: 3.2; }
+.ouch { position: absolute; inset: 0; background: var(--hit); opacity: 0; }
+.enemy.punching .guard-r { visibility: hidden; }
 .twinkle { position: absolute; width: 130px; height: 130px; translate: -50% -50%; }
 .twinkle svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .flash {
@@ -262,7 +280,11 @@ button, summary { font-family: var(--font-body); }
 .judge.miss b { color: var(--hit); }
 
 .keypad { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-.keypad .btn { font-family: var(--font-display); font-weight: 400; font-size: 22px; padding: 8px 0; }
+.keypad .btn {
+  font-family: var(--font-display); font-weight: 400; font-size: 22px; padding: 8px 0;
+  touch-action: manipulation;            /* 連打してもダブルタップ拡大にならないように */
+  -webkit-user-select: none; user-select: none;
+}
 
 /* 記録 */
 .records { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 14px; }
@@ -320,6 +342,35 @@ button, summary { font-family: var(--font-body); }
   .hud h1 { font-size: 18px; flex-basis: 100%; }
 }
 
+/* 横持ち（スマホ・タブレット）：1画面に収め、数字は下端に1列。左手が1〜5、右手が6〜0 */
+@media (orientation: landscape) and (pointer: coarse), (orientation: landscape) and (max-height: 520px) {
+  .game { grid-template-columns: minmax(0, 1fr); padding: 8px 12px 16px; gap: 8px; }
+  .hud { flex-wrap: nowrap; gap: 8px 12px; height: 36px; }
+  .hud h1 { font-size: 18px; flex-basis: auto; white-space: nowrap; }
+  .hud .btn { padding: 4px 10px; white-space: nowrap; }
+  .play {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 10px;
+    height: calc(100vh - 62px);
+    height: calc(100dvh - 62px);
+    min-height: 230px;
+    padding: 0 6px 6px 0;                /* 硬い影のぶん */
+  }
+  .stage { height: auto; min-height: 0; }
+  .enemy-wrap { height: min(76%, 560px); }   /* 低い画面で頭が体力バーに重ならないように */
+  .panel { justify-content: center; min-height: 0; padding: 8px 12px; }
+  .question { font-size: clamp(34px, 13vh, 76px); white-space: nowrap; }
+  .keypad {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) clamp(10px, 3vw, 36px) repeat(5, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .keypad .btn { font-size: clamp(22px, 7vh, 34px); padding: 0; height: clamp(52px, 15vh, 92px); }
+  .keypad .btn:nth-child(6) { grid-column: 7; }   /* 5と6の間を空けて左右の手を分ける */
+}
+
 /* だれが遊ぶ？ */
 .who {
   position: fixed; inset: 0; z-index: 20;
@@ -358,6 +409,12 @@ button, summary { font-family: var(--font-body); }
   padding: 8px 10px; border: 3px solid var(--ink); border-radius: 8px; background: #fff; color: var(--ink);
 }
 .who-note { margin: 0; font-size: 13px; color: var(--hit); font-weight: 700; min-height: 1.4em; }
+.cycle-nums { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cycle-nums div { border: 3px solid var(--ink); border-radius: 10px; padding: 10px 6px; text-align: center; font-size: 13px; font-weight: 700; }
+.cycle-nums b { display: block; font-family: var(--font-display); font-weight: 400; font-size: 40px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.cycle-msg { margin: 0; text-align: center; font-weight: 700; }
+#cycleNext { font-size: 18px; padding: 12px; }
+.worst-line { font-size: 13px; margin: 0; }
 #whoBtn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 </head>
@@ -418,6 +475,19 @@ button, summary { font-family: var(--font-body); }
               <circle cx="192" cy="150" r="18" fill="#ff3b30" opacity=".6"/>
             </g>
           </g>
+          <!-- 構えた拳(ファイティングポーズ)。頭より手前に描く -->
+          <g class="guard guard-l">
+            <path class="ink skin" fill="#f6c9a0" d="M30 306 L58 238 L108 246 L98 306 Z"/>
+            <rect class="ink skin" fill="#f6c9a0" x="46" y="188" width="70" height="62" rx="22"/>
+            <path class="thin" d="M64 190 v15 M81 188 v15 M98 190 v15"/>
+            <path class="thin" d="M54 230 Q82 216 110 232"/>
+          </g>
+          <g class="guard guard-r">
+            <path class="ink skin" fill="#f6c9a0" d="M270 306 L242 228 L192 236 L202 306 Z"/>
+            <rect class="ink skin" fill="#f6c9a0" x="184" y="178" width="70" height="62" rx="22"/>
+            <path class="thin" d="M202 180 v15 M219 178 v15 M236 180 v15"/>
+            <path class="thin" d="M190 222 Q218 206 246 220"/>
+          </g>
         </svg>
         <img id="enemyImg" alt="">
       </div>
@@ -452,9 +522,10 @@ button, summary { font-family: var(--font-body); }
       <h3>出題する段</h3>
       <div class="dans" id="dans"></div>
     </div>
+    <p class="worst-line" id="worstLine"></p>
     <div class="foot">
       <button class="btn" id="resetBtn" type="button">記録を消す</button>
-      <p>いま遊んでいる人の記録だけ消します。記録はこのブラウザの中だけに保存されます。</p>
+      <p>いま遊んでいる人の記録だけ消します（なぐられた回数のワーストも消えます）。記録はこのブラウザの中だけに保存されます。</p>
     </div>
     <details class="swap">
       <summary>敵の画像を自分の絵に差し替える</summary>
@@ -484,6 +555,18 @@ button, summary { font-family: var(--font-body); }
   </div>
 </div>
 
+<div class="who" id="cycle" role="dialog" aria-modal="true" aria-labelledby="cycleTitle" hidden>
+  <div class="who-card">
+    <h2 id="cycleTitle">1サイクル クリア！</h2>
+    <div class="cycle-nums">
+      <div>なぐられた回数<b id="cycleHits">0</b></div>
+      <div>これまでのワースト<b id="cycleWorst">0</b></div>
+    </div>
+    <p class="cycle-msg" id="cycleMsg"></p>
+    <button class="btn" id="cycleNext" type="button">つぎのサイクルへ</button>
+  </div>
+</div>
+
 <script>
 (() => {
   'use strict';
@@ -504,6 +587,7 @@ button, summary { font-family: var(--font-body); }
   let enemyIdx = 0, hp = ENEMIES[0].hp, maxHp = ENEMIES[0].hp;
   let combo = 0, kos = 0, locked = false, dir = 1;
   let stateTimer = 0;
+  let punched = 0;      // このサイクルでなぐられた回数（＝まちがえた回数）
   const images = { idle: null, hit: null, ko: null };
 
   /* ---------- 音（Web Audioで合成） ---------- */
@@ -670,6 +754,76 @@ button, summary { font-family: var(--font-body); }
     ], { duration: big ? 800 : 520, easing: 'ease-out' }).onfinish = () => el.remove();
   }
 
+  /* ---------- 殴られる（まちがえた時） ---------- */
+  let punchTimer = 0;
+  function punchPlayer() {
+    const skin = ENEMIES[enemyIdx % ENEMIES.length].skin;
+    const el = document.createElement('div');
+    el.className = 'punch';
+    el.innerHTML = `<svg viewBox="0 0 100 100">
+      <rect class="ink" fill="${skin}" x="10" y="30" width="80" height="62" rx="20"/>
+      <rect class="ink" fill="${skin}" x="10" y="12" width="23" height="40" rx="10"/>
+      <rect class="ink" fill="${skin}" x="29" y="8" width="23" height="44" rx="10"/>
+      <rect class="ink" fill="${skin}" x="48" y="8" width="23" height="44" rx="10"/>
+      <rect class="ink" fill="${skin}" x="67" y="12" width="23" height="40" rx="10"/>
+      <path class="ink" fill="${skin}" d="M12 66 Q40 50 76 60 Q88 66 78 76 Q46 72 16 84 Z"/></svg>`;
+    fx.appendChild(el);
+    const big = REDUCED ? 1.4 : 2.5, rot = rand(-10, 10);
+    el.animate([
+      { transform: `translate(18%,-22%) scale(.25) rotate(${rot}deg)`, opacity: 1, easing: 'cubic-bezier(.2,.9,.3,1)' },
+      { transform: `translate(0,0) scale(${big}) rotate(${rot}deg)`, opacity: 1, offset: 0.22 },
+      { transform: `translate(0,0) scale(${big * 0.94}) rotate(${rot}deg)`, opacity: 1, offset: 0.6 },
+      { transform: `translate(14%,-18%) scale(.4) rotate(${rot}deg)`, opacity: 0 },
+    ], { duration: 430 }).onfinish = () => el.remove();
+    enemy.classList.add('punching');                 // 構えていた拳が飛んできたように見せる
+    clearTimeout(punchTimer);
+    punchTimer = setTimeout(() => enemy.classList.remove('punching'), 430);
+    setTimeout(() => {                               // 当たった瞬間
+      thump(0.8); shake(0.9);
+      const r = stage.getBoundingClientRect();
+      spark({ x: r.width * rand(0.3, 0.7), y: r.height * rand(0.3, 0.6) }, true);
+      if (!REDUCED) {
+        const o = document.createElement('div');
+        o.className = 'ouch'; fx.insertBefore(o, fx.firstChild);   // 拳より奥に敷く
+        o.animate([{ opacity: 0.55 }, { opacity: 0 }], { duration: 260 }).onfinish = () => o.remove();
+      }
+    }, 90);
+  }
+
+  /* ---------- 1サイクル（敵を全員たおす）の結果 ---------- */
+  function renderWorst() {
+    $('worstLine').textContent = data.worst == null
+      ? '1サイクル（敵を' + ENEMIES.length + '人たおす）でなぐられた回数のワースト：まだ記録なし'
+      : '1サイクルでなぐられた回数のワースト：' + data.worst + '回';
+  }
+  function showCycle() {
+    const before = data.worst, n = punched;
+    const isWorst = before != null && n > before;
+    if (before == null || n > before) { data.worst = n; save(); }
+    $('cycleHits').textContent = n;
+    $('cycleWorst').textContent = data.worst;
+    $('cycleMsg').textContent = n === 0 ? '1回もなぐられなかった！かんぺき！'
+      : before == null ? 'はじめての記録です。'
+      : isWorst ? 'ワースト記録をこうしん…（前は' + before + '回）'
+      : 'ワースト（' + before + '回）より' + (before - n) + '回すくない！';
+    renderWorst();
+    paused = true;
+    $('cycle').hidden = false;
+    try { $('cycleNext').focus({ preventScroll: true }); } catch (e) {}
+  }
+  function spawnEnemy() {
+    loadEnemy(); nextQuestion();
+    enemyWrap.animate([
+      { transform: 'translateY(60%)' }, { transform: 'translateY(-4%)', offset: 0.7 }, { transform: 'translateY(0)' },
+    ], { duration: 380, easing: 'ease-out' });
+    locked = false;
+  }
+  $('cycleNext').addEventListener('click', () => {
+    $('cycle').hidden = true;
+    punched = 0; paused = false;
+    spawnEnemy();
+  });
+
   /* ---------- 殴る ---------- */
   function hit(heavy) {
     dir = -dir;
@@ -738,11 +892,9 @@ button, summary { font-family: var(--font-body); }
     setTimeout(() => {
       if (g !== gen) return;               // 途中で交代していたら何もしない
       enemyWrap.getAnimations().forEach(a => a.cancel());
-      enemyIdx++; loadEnemy(); nextQuestion();
-      enemyWrap.animate([
-        { transform: 'translateY(60%)' }, { transform: 'translateY(-4%)', offset: 0.7 }, { transform: 'translateY(0)' },
-      ], { duration: 380, easing: 'ease-out' });
-      locked = false;
+      enemyIdx++;
+      if (enemyIdx % ENEMIES.length === 0) showCycle();   // 全員たおしたら結果を見せる
+      else spawnEnemy();
     }, 1650);
   }
 
@@ -753,7 +905,7 @@ button, summary { font-family: var(--font-body); }
   const RECENT = 3;     // 判定に使う直近の回数
   const TOO_LONG = 30000; // これより長い回答は席を外したとみなして記録しない
   const ALL_DANS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {} });
+  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null });
   function clean(p) {            // 保存データが壊れていても動くように整える
     if (!p || typeof p !== 'object') return null;
     const out = newProfile(String(p.name || 'プレイヤー').slice(0, 8));
@@ -761,6 +913,7 @@ button, summary { font-family: var(--font-body); }
     if (p.th >= 1000 && p.th <= 5000) out.th = p.th;
     if (Array.isArray(p.dans)) { const d = p.dans.filter(n => n >= 1 && n <= 9); if (d.length) out.dans = d; }
     if (p.cells && typeof p.cells === 'object') out.cells = p.cells;
+    if (Number.isInteger(p.worst) && p.worst >= 0) out.worst = p.worst;
     return out;
   }
   let store = { profiles: [], last: null };
@@ -860,6 +1013,7 @@ button, summary { font-family: var(--font-body); }
     const ans = String(q.a * q.b);
     if (!ans.startsWith(typed + d)) {            // まちがい：答えを見せて打ち直し
       missed = true; typed = ''; combo = 0; renderStats(false); blip(); renderQuestion();
+      punched++; punchPlayer();
       judge('miss', 'ちがうよ', `こたえは ${ans}。打ってみよう`);
       $('question').animate([
         { transform: 'translateX(-8px)' }, { transform: 'translateX(8px)' },
@@ -926,8 +1080,8 @@ button, summary { font-family: var(--font-body); }
       return;
     }
     clearTimeout(resetArmed); resetArmed = 0; btn.textContent = '記録を消す';
-    data.cells = {}; selected = null; save(); renderRecords();
-    $('detail').textContent = '記録を消しました。';
+    data.cells = {}; data.worst = null; selected = null; save(); renderRecords(); renderWorst();
+    $('detail').textContent = '記録を消しました。ワースト記録も消えました。';
   });
 
   /* ---------- だれが遊ぶ？ ---------- */
@@ -939,7 +1093,8 @@ button, summary { font-family: var(--font-body); }
   }
   function startAs(p) {
     data = p; store.last = p.id; save();
-    gen++; paused = false; locked = false; combo = 0; kos = 0; enemyIdx = 0; selected = null;
+    gen++; paused = false; locked = false; combo = 0; kos = 0; enemyIdx = 0; selected = null; punched = 0;
+    $('cycle').hidden = true;
     clearTimeout(stateTimer);
     enemyWrap.getAnimations().forEach(a => a.cancel());
     $('who').hidden = true;
@@ -947,7 +1102,7 @@ button, summary { font-family: var(--font-body); }
     $('th').value = p.th / 1000;
     $('detail').textContent = 'マスを押すと、その九九の記録が見られます。数字は最近3回の平均秒数です。';
     $('judge').className = 'judge'; $('judge').textContent = HINT;
-    loadEnemy(); renderDans(); renderRecords(); renderStats(false); nextQuestion();
+    loadEnemy(); renderDans(); renderRecords(); renderWorst(); renderStats(false); nextQuestion();
   }
   function openWho() {
     paused = true;
@@ -1022,7 +1177,7 @@ button, summary { font-family: var(--font-body); }
   });
 
   // 開始時は必ず名前を選ぶ。後ろには前回の人の記録を表示しておく
-  loadEnemy(); renderDans(); renderRecords(); renderStats(false); nextQuestion();
+  loadEnemy(); renderDans(); renderRecords(); renderWorst(); renderStats(false); nextQuestion();
   openWho();
 })();
 </script>
