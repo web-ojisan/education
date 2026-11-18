@@ -193,19 +193,14 @@ button, summary { font-family: var(--font-body); }
 /* 集団の敵（1問で1体たおす）。ステージの大きさに合わせて、前後の列に並べる */
 .stage { container-type: size; }
 .stage.horde-mode .enemy-wrap { display: none; }
-.horde { position: absolute; inset: 0; z-index: 1; --mw: min(28cqw, 70cqh); --step: min(17cqw, 52cqh); }
-.horde.wide { --mw: min(20cqw, 62cqh); --step: min(14cqw, 44cqh); }
+.horde { position: absolute; inset: 0; z-index: 1; }
 .horde[hidden] { display: none; }
 .mob {
-  position: absolute;
-  left: calc(50% + var(--dx) * var(--step));
-  bottom: calc(var(--row) * min(13cqh, 9cqw) - 1cqh);
-  width: calc(var(--mw) * var(--sc));
+  position: absolute;                       /* 位置と大きさは layoutHorde が決める */
   aspect-ratio: 1 / 1;
   translate: -50% 0;
   transform-origin: 50% 100%;
-  filter: brightness(var(--br));
-  transition: left .3s ease-out, bottom .3s ease-out, width .3s ease-out, filter .3s;
+  transition: left .32s ease-out, bottom .32s ease-out, width .32s ease-out, filter .32s;
 }
 .mob img {
   width: 100%; height: 100%; display: block;
@@ -1016,39 +1011,61 @@ button, summary { font-family: var(--font-body); }
   const rand = (a, b) => a + Math.random() * (b - a);
   /* ---------- 集団の敵 ---------- */
   const horde = $('horde');
-  let groupMode = false, mobs = [], hordeCap = 5;   // mobs：まだ立っている敵（前の列から順）
-  function buildHorde(n) {
+  const GROUP_PER = 3;                    // 1問につき何体か（9問なら27体。正解1回で3体たおす）
+  let groupMode = false, mobs = [], frontCount = 0;   // mobs：まだ立っている敵（手前の列から順）
+  function buildHorde(questions) {
     horde.textContent = ''; mobs = [];
-    hordeCap = n <= 14 ? 5 : 6;            // 1列に並べる数
-    horde.classList.toggle('wide', hordeCap > 5);
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < questions * GROUP_PER; i++) {
       const el = document.createElement('div'); el.className = 'mob';
       const img = document.createElement('img'); img.alt = ''; img.src = art.idle;
-      el.style.setProperty('--flip', i % 2 ? -1 : 1);            // 同じ絵でも、向きと動きをずらして別の敵に見せる
+      el.style.setProperty('--flip', Math.random() < 0.5 ? -1 : 1);   // 同じ絵でも、向き・動き・位置・大きさをずらして別の敵に見せる
       el.style.setProperty('--delay', (-rand(0, 1.7)).toFixed(2) + 's');
       el.appendChild(img); horde.appendChild(el);
-      mobs.push({ el, img });
+      mobs.push({ el, img, jx: rand(-1, 1), jy: rand(-1, 1), js: rand(0.94, 1.06) });
     }
     horde.hidden = false;
     layoutHorde();
   }
-  // 立っている敵を前の列からつめて並べ直す（たおすと、後ろの敵が前に出てくる）
+  // 立っている敵を、手前の列からつめて並べ直す（たおすと、後ろの敵が前に出て大きくなる＝迫ってくる）。
+  // 手前の列はいちばん大きく、腰から下は画面の下に切れる。奥の列ほど小さく、高く、暗い
+  const ROW_SC = [1.3, 0.98, 0.76, 0.6, 0.49, 0.41, 0.35];      // 列ごとの大きさ
+  const ROW_UP = [-0.5, 0.0, 0.34, 0.6, 0.79, 0.93, 1.03];      // 列ごとの足もとの高さ（基準の大きさに対する割合）
+  const ROW_BR = [1, 0.9, 0.78, 0.68, 0.6, 0.54, 0.5];          // 列ごとの明るさ
   function layoutHorde() {
-    mobs.forEach((m, k) => {
-      const row = Math.floor(k / hordeCap), inRow = Math.min(hordeCap, mobs.length - row * hordeCap), col = k - row * hordeCap;
-      const s = m.el.style;
-      s.setProperty('--row', row);
-      s.setProperty('--dx', (col - (inRow - 1) / 2 + (row % 2 ? 0.18 : 0)).toFixed(2));
-      s.setProperty('--sc', [1, 0.84, 0.7, 0.6][Math.min(row, 3)]);
-      s.setProperty('--br', [1, 0.82, 0.68, 0.58][Math.min(row, 3)]);
-      s.zIndex = 10 - row;
-    });
+    const W = stage.clientWidth, H = stage.clientHeight;
+    if (!W || !H) return;
+    const base = Math.min(H * 0.62, W * 0.3);
+    let k = 0, row = 0;
+    while (k < mobs.length) {
+      const r = Math.min(row, ROW_SC.length - 1);
+      const w = base * ROW_SC[r], step = w * 0.56;
+      const cap = Math.max(3, Math.floor((W * 1.02 - w) / step) + 1);   // その列に並べられる数（画面の幅いっぱい）
+      const n = Math.min(cap, mobs.length - k);
+      if (row === 0) frontCount = n;
+      for (let c = 0; c < n; c++, k++) {
+        const m = mobs[k], st = m.el.style;
+        st.width = (w * m.js).toFixed(1) + 'px';
+        st.left = (W / 2 + (c - (n - 1) / 2 + (row % 2 ? 0.3 : 0)) * step + m.jx * step * 0.22).toFixed(1) + 'px';
+        st.bottom = (base * (ROW_UP[r] + (row - r) * 0.08) + m.jy * base * 0.035).toFixed(1) + 'px';
+        st.filter = `brightness(${ROW_BR[r]})`;
+        st.zIndex = 200 - row * 10 + (c % 3);
+      }
+      row++;
+    }
   }
-  // いまねらっている敵：前の列のまんなか
-  const targetMob = () => mobs[Math.floor((Math.min(hordeCap, mobs.length) - 1) / 2)];
+  if (window.ResizeObserver) new ResizeObserver(() => { if (groupMode) layoutHorde(); }).observe(stage);
+  // いまねらっている敵：手前の列のまんなかから n 体
+  function targetMobs(n) {
+    const c = Math.floor((frontCount - 1) / 2), out = [];
+    for (let d = 0; out.length < n && d < mobs.length; d++) {
+      for (const i of d ? [c + d, c - d] : [c]) if (i >= 0 && i < mobs.length && out.length < n) out.push(mobs[i]);
+    }
+    return out;
+  }
+  const targetMob = () => targetMobs(1)[0];
   const mobPose = (m, pose) => { m.img.src = art[pose] || art.idle; };
   // 1体をたおす。toStar=true は奥へ飛んで星に、false は横へ転がって消える
-  function killMob(m, toStar) {
+  function killMob(m, toStar, noLayout) {
     const i = mobs.indexOf(m); if (i < 0) return;
     mobs.splice(i, 1);
     mobPose(m, 'ko');
@@ -1076,25 +1093,32 @@ button, summary { font-family: var(--font-body); }
       ms = 480;
     }
     m.el.animate(frames, { duration: ms, easing: 'cubic-bezier(.2,.6,.3,1)', fill: 'forwards' }).onfinish = () => m.el.remove();
+    if (!noLayout) layoutHorde();
+  }
+  // まとめてたおす。左右に散るように、向きを交互にする
+  function killMobs(list, toStar) {
+    const d = dir;
+    list.forEach((m, i) => { dir = i % 2 ? -d : d; killMob(m, toStar, true); });
+    dir = d;
     layoutHorde();
   }
-  // 集団への打撃。正解のたびに1体たおす。最後の問題では、残っている全員をまとめて吹っ飛ばす
+  // 集団への打撃。正解のたびに GROUP_PER 体たおす。最後の問題では、残っている全員をまとめて吹っ飛ばす
   function hitHorde(heavy, ko, perfect, g) {
-    const m = targetMob();
+    const group = targetMobs(GROUP_PER), m = group[0];
     const at = () => {
       const s = stage.getBoundingClientRect(), r = (m && m.el.isConnected ? m.el : horde).getBoundingClientRect();
       return { x: r.left - s.left + r.width * rand(0.35, 0.65), y: r.top - s.top + r.height * rand(0.25, 0.5) };
     };
     const jab = () => {
       const pt = at();
-      if (m) { mobPose(m, 'hit'); m.el.animate([{ transform: 'translate(0,0)' }, { transform: `translate(${dir * 10}px,-4px) rotate(${dir * 6}deg)` }, { transform: 'translate(0,0)' }], { duration: 120 }); }
+      group.forEach(x => { mobPose(x, 'hit'); x.el.animate([{ transform: 'translate(0,0)' }, { transform: `translate(${dir * 10}px,-4px) rotate(${dir * 6}deg)` }, { transform: 'translate(0,0)' }], { duration: 120 }); });
       spark(pt, false); sndJab(); shake(0.35); bits(pt, 2);
     };
     const big = () => {
       if (g !== gen) return;
       const pt = at();
       spark(pt, true);
-      if (!ko) { sndStraight(); flashScreen(0.5); bits(pt, 9); shake(0.8); if (m) killMob(m, true); return; }
+      if (!ko) { sndStraight(); flashScreen(0.5); bits(pt, 12); shake(0.8); killMobs(group, true); return; }
       sndKO(); flashScreen(1); bits(pt, perfect ? 34 : 16);
       if (perfect) {
         setTimeout(() => { if (g === gen) { spark(at(), true); flashScreen(1); } }, 110);
@@ -1104,7 +1128,7 @@ button, summary { font-family: var(--font-body); }
     };
     if (heavy) { jab(); setTimeout(() => { dir = -dir; big(); }, ONE_TWO); }
     else if (ko) big();
-    else { jab(); setTimeout(() => { if (g === gen && m) killMob(m, false); }, 90); }
+    else { jab(); setTimeout(() => { if (g === gen) killMobs(group, false); }, 90); }
     return ko;
   }
 
@@ -1483,7 +1507,7 @@ button, summary { font-family: var(--font-body); }
     const tx = sr.left + star.x - (wr.left + wr.width / 2), ty = sr.top + star.y - wr.bottom;
     const spin = REDUCED ? 0 : d * (perfect ? 1440 : 720);
     if (groupMode) {                       // 集団：残っている全員を、少しずつずらして吹っ飛ばす
-      mobs.slice().forEach((m, i) => setTimeout(() => { if (g === gen) { dir = i % 2 ? d : -d; killMob(m, true); } }, i * 70));
+      mobs.slice().forEach((m, i) => setTimeout(() => { if (g === gen) { dir = i % 2 ? d : -d; killMob(m, true, true); } }, i * 55));
     } else enemyWrap.animate([
       { transform: 'translate(0px,0px) rotate(0deg) scale(1)', opacity: 1 },
       { transform: `translate(${d * 18}px,-26px) rotate(${d * 24}deg) scale(${perfect ? 1.3 : 1.12})`, opacity: 1, offset: 0.1 },
