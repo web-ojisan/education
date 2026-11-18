@@ -266,12 +266,22 @@ button, summary { font-family: var(--font-body); }
   font-size: clamp(20px, 6.5vh, 38px); line-height: 1.4;
 }
 .runres b { display: block; font-weight: 400; color: var(--pop); white-space: nowrap; }
-.stamps { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 6px 8px; align-items: center; font-size: 13px; }
-.stamps .dan { font-family: var(--font-display); }
-.stamps .best { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.stamp { border: 2px solid #c9c6b8; border-radius: 999px; padding: 1px 8px; font-weight: 700; color: #a8a596; text-align: center; white-space: nowrap; }
-.stamp.on { border-color: var(--ink); color: var(--ink); background: var(--memo); }
-.stamp.seq.on { background: var(--pop); }
+/* 九九の表：行の左端は段のメダル、右端はじゅんばんのベストタイム */
+.kuku .rh {
+  aspect-ratio: 1 / 1; padding: 0; cursor: pointer;
+  display: grid; place-items: center; position: relative;
+  background: none; border: 2.5px solid transparent; border-radius: 50%;
+  font-family: var(--font-display); font-size: 13px; color: var(--muted);
+}
+.kuku .rh.seq { border-color: #8a93a8; background: #e3e7f1; color: var(--ink); }     /* じゅんばん合格：銀の輪 */
+.kuku .rh.gold { border-color: var(--ink); background: var(--pop); color: var(--ink); }  /* 段をぜんぶ暗記：金メダル */
+.kuku .rh.gold.seq::after { content: "★"; position: absolute; top: -7px; right: -6px; font-size: 12px; line-height: 1; color: var(--hit); -webkit-text-stroke: 1.5px var(--ink); paint-order: stroke fill; }
+.kuku .rh[aria-pressed="true"] { outline: 3px solid var(--cobalt); outline-offset: 1px; }
+.kuku .bt { display: grid; place-items: center; font-size: 10.5px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kuku.wide .rh { font-size: 10px; border-width: 2px; }
+.kuku.wide .bt { font-size: 8.5px; }
+.md { width: 15px; height: 15px; border-radius: 50%; border: 2.5px solid #8a93a8; background: #e3e7f1; display: inline-block; }
+.md.gold { border-color: var(--ink); background: var(--pop); }
 .ko-banner {
   position: absolute; inset: 0; z-index: 6;
   display: grid; place-items: center;
@@ -335,6 +345,7 @@ button, summary { font-family: var(--font-body); }
 .s-miss { background: var(--hit); color: #fff; }
 .s-none { background: var(--none); }
 .kuku { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; }
+#kuku { max-width: 600px; margin: 0 auto; width: 100%; }   /* 広い画面で表が大きくなりすぎないように */
 .kuku.wide { gap: 2px; }
 .kuku.wide .h { font-size: 10px; }
 .kuku.wide button { border-width: 1.5px; border-radius: 3px; font-size: 0; }
@@ -432,14 +443,21 @@ button, summary { font-family: var(--font-body); }
 /* 設定と記録（ゲームとは別の画面） */
 .settings { position: fixed; inset: 0; z-index: 15; background: var(--cobalt-deep); overflow: auto; }
 .settings[hidden] { display: none; }
-.settings-inner { max-width: 1120px; margin: 0 auto; padding: 12px 16px 28px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.settings-inner { max-width: 760px; margin: 0 auto; padding: 12px 16px 28px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .settings-head { display: flex; align-items: center; gap: 12px; color: var(--paper); }
 .settings-head h2 { font-family: var(--font-display); font-weight: 400; font-size: 22px; margin: 0 auto 0 0; }
 .settings-head .btn { font-size: 15px; padding: 8px 14px; }
-@media (min-width: 900px) {
-  .settings-inner { grid-template-columns: minmax(0, 420px) minmax(0, 1fr); align-items: start; }
-  .settings-head { grid-column: 1 / -1; }
-}
+.set-tabs { display: flex; gap: 8px; }
+.set-tabs .btn { flex: 1; font-size: 15px; padding: 9px 4px; }
+.set-tabs .btn[aria-pressed="true"] { background: var(--pop); }
+.set-tabs .btn[aria-pressed="false"] { background: var(--paper); }
+.settings section[hidden] { display: none; }
+.play-sum { margin: 0; padding: 8px 12px; border: 3px solid var(--ink); border-radius: 10px; background: #fff; font-size: 14px; font-weight: 700; line-height: 1.5; }
+.play-sum b { font-family: var(--font-display); font-weight: 400; }
+.step { display: flex; align-items: baseline; gap: 8px; margin: 0 0 6px; font-size: 14px; }
+.step i { font-style: normal; font-family: var(--font-display); background: var(--ink); color: var(--paper); border-radius: 50%; width: 1.5em; height: 1.5em; display: inline-grid; place-items: center; font-size: 12px; flex: none; }
+.mini { display: flex; gap: 6px; margin-top: 8px; }
+.mini .btn { font-size: 12px; padding: 3px 10px; box-shadow: 2px 2px 0 var(--ink); }
 .choice { display: flex; flex-wrap: wrap; gap: 8px; }
 .choice .btn { flex: 1 1 110px; padding: 8px 6px; font-size: 14px; box-shadow: 2px 2px 0 var(--ink); }
 .choice .btn[aria-pressed="true"] { background: var(--pop); }
@@ -617,36 +635,68 @@ button, summary { font-family: var(--font-body); }
       <h2 id="setTitle">設定と記録</h2>
       <button class="btn" id="setClose" type="button">ゲームにもどる</button>
     </header>
+    <nav class="set-tabs" id="setTabs" aria-label="設定の種類"></nav>
 
-    <section class="records">
-      <h2>設定</h2>
+    <!-- あそびかた：よく変える設定を、考える順に -->
+    <section class="records" id="tabPlay">
+      <p class="play-sum" id="playSum"></p>
       <div class="setting">
-        <h3>問題の形</h3>
-        <div class="choice" id="forms"></div>
-        <p class="hint" id="formHint"></p>
+        <h3 class="step"><i>1</i>どの段を</h3>
+        <div class="dans" id="dans"></div>
+        <div class="mini">
+          <button class="btn" id="dansAll" type="button">ぜんぶえらぶ</button>
+          <button class="btn" id="dansNone" type="button">ぜんぶはずす</button>
+        </div>
       </div>
       <div class="setting">
-        <h3>ゲームタイプ</h3>
+        <h3 class="step"><i>2</i>どの順で</h3>
         <div class="choice" id="types"></div>
         <p class="hint" id="typeHint"></p>
       </div>
       <div class="setting">
-        <h3>モード</h3>
+        <h3 class="step"><i>3</i>どんな形で</h3>
+        <div class="choice" id="forms"></div>
+        <p class="hint" id="formHint"></p>
+      </div>
+      <div class="setting">
+        <h3 class="step"><i>4</i>むずかしさ</h3>
         <div class="choice" id="levels"></div>
         <p class="hint" id="levelHint"></p>
       </div>
-      <div class="setting">
-        <h3>出題する段</h3>
-        <div class="dans" id="dans"></div>
+    </section>
+
+    <!-- きろく：見るだけ。ロック中でも見られる -->
+    <section class="records" id="tabRec" hidden>
+      <div class="rec-tabs" id="recTabs"></div>
+      <div class="legend" id="legend"></div>
+      <div class="kuku" id="kuku" aria-label="九九の表。たてが段、よこがかける数"></div>
+      <p class="detail" id="detail"></p>
+      <div>
+        <h3>にがてな九九</h3>
+        <ul class="weak" id="weak"></ul>
       </div>
+      <p class="worst-line" id="worstLine"></p>
+      <p class="hint" id="recHint"></p>
+    </section>
+
+    <!-- おうちの人：たまにしか触らない設定 -->
+    <section class="records" id="tabParent" hidden>
       <div class="setting">
         <label for="th">暗記とみなす速さ：<span id="thVal"></span>秒より速い</label>
         <input id="th" type="range" min="1" max="5" step="0.5">
+        <p class="hint">この秒数より速く正解すると「暗記」になります。強いパンチになるのも、この速さです。</p>
       </div>
       <div class="setting">
         <h3>設定のロック</h3>
         <div class="choice"><button class="btn" id="lockBtn" type="button" aria-pressed="false">ロック：OFF</button></div>
-        <p class="hint">ONにすると、この画面を開くときに6桁のパスワードが必要になります。おうちの人が設定を固定したいときに使います。</p>
+        <p class="hint">ONにすると、「あそびかた」と「おうちの人」を開くときに6桁のパスワードが必要になります。「きろく」はロック中でも見られます。</p>
+      </div>
+      <div class="setting">
+        <h3>記録を消す</h3>
+        <div class="foot">
+          <button class="btn" id="resetBtn" type="button">記録を消す</button>
+          <p>いま遊んでいる人の記録だけ消します（なぐられた回数のワーストも消えます。解放したモードは残ります）。記録はこのブラウザの中だけに保存されます。</p>
+        </div>
       </div>
       <details class="swap">
         <summary>敵の画像を自分の絵に差し替える</summary>
@@ -658,29 +708,6 @@ button, summary { font-family: var(--font-body); }
           <p>背景が透明な正方形のPNGがきれいに収まります。通常の1枚だけでも動きます。</p>
         </div>
       </details>
-    </section>
-
-    <section class="records">
-      <h2>九九の記録</h2>
-      <div>
-        <h3>段ごとの合格</h3>
-        <div class="stamps" id="stamps"></div>
-        <p class="hint">「じゅんばん」は、じゅんばんタイプでその段を全問、暗記の速さで正解するともらえます。右の秒数は全問正解したときの合計タイムのベストです。「暗記」は、その段のマスがぜんぶ暗記になるともらえます。</p>
-      </div>
-      <div class="rec-tabs" id="recTabs"></div>
-      <p class="hint" id="recHint"></p>
-      <div class="legend" id="legend"></div>
-      <div class="kuku" id="kuku" aria-label="九九の表。たてが段、よこがかける数"></div>
-      <p class="detail" id="detail"></p>
-      <div>
-        <h3>にがてな九九</h3>
-        <ul class="weak" id="weak"></ul>
-      </div>
-      <p class="worst-line" id="worstLine"></p>
-      <div class="foot">
-        <button class="btn" id="resetBtn" type="button">記録を消す</button>
-        <p>いま遊んでいる人の記録だけ消します（なぐられた回数のワーストも消えます。解放したモードは残ります）。記録はこのブラウザの中だけに保存されます。</p>
-      </div>
     </section>
   </div>
 </div>
@@ -777,13 +804,13 @@ button, summary { font-family: var(--font-body); }
     { name: '地獄',    nums: R(1, 9).concat(R(11, 19)) },
   ];
   const TYPES = [
-    ['seq',  'じゅんばん', '有効にした段を、小さい段から順番に出します。敵ひとりが1つの段です。速く答えても「暗記」にはなりませんが、段ごとの「じゅんばん合格」とベストタイムが残ります。'],
-    ['rand', 'ランダム',   '有効にした段の問題を、ばらばらの順番で出します。1サイクルで全部の問題が1回ずつ出ます。速く正解すると「暗記」になります。'],
-    ['weak', '弱点',       '有効にした段の中から、にがてな九九ほど多く出します。速く正解すると「暗記」になります。'],
+    ['seq',  'じゅんばん', '小さい段から順番に出します。敵ひとりが1つの段。「じゅんばん合格」とベストタイムが残ります（「暗記」にはなりません）。'],
+    ['rand', 'ランダム',   'ばらばらの順番で、全部の問題を1回ずつ出します。速く正解すると「暗記」になります。'],
+    ['weak', '弱点',       'にがてな九九ほど多く出します。速く正解すると「暗記」になります。'],
   ];
   const FORMS = [
     ['norm', 'ふつう', '3 × 4 = □ の形で出します。'],
-    ['hole', '穴あき', '3 × □ = 12 の形で出します。わり算の考え方の練習になります。記録はふつうの九九とは別に残ります。'],
+    ['hole', '穴あき', '3 × □ = 12 の形で出します。わり算の考え方の練習になります。記録は別の表に残ります。'],
     ['mix',  'まぜる', 'ふつうと穴あきを、まぜて出します。'],
   ];
   const SFX_JAB = ['ペシ', 'パシ', 'ポコ', 'ビシ'];
@@ -1624,33 +1651,38 @@ button, summary { font-family: var(--font-body); }
   const sec = ms => (ms / 1000).toFixed(1);
   const LABEL = { memo: '暗記', think: '考えてる', miss: 'まちがえた', none: 'まだ' };
 
+  let selRow = null;                      // 記録の画面で、段のメダルを押して選んでいる段
   let selected = null, recHole = false;   // recHole：記録の画面で穴あきの表を見ているか
   function renderRecords() {
     const count = { memo: 0, think: 0, miss: 0, none: 0 }, weak = [];
     const N = nums(), H = recHole;
-    $('stamps').innerHTML = N.map(a => {
-      const r = (data.seq[data.level] || {})[a] || {};
-      const memo = N.filter(b => cellInfo(a, b).s === 'memo').length;
-      return `<span class="dan">${a}の段</span><span class="stamp seq${r.pass ? ' on' : ''}">じゅんばん</span>`
-        + `<span class="best">${r.best != null ? sec(r.best) + '秒' : '—'}</span>`
-        + `<span class="stamp${memo === N.length ? ' on' : ''}">暗記 ${memo}/${N.length}</span>`;
-    }).join('');
-    $('recHint').textContent = H ? '穴あき問題の記録です。' : 'ランダムと弱点で出た問題の記録です。じゅんばんで答えた分は、ここには入りません。';
+    $('recHint').textContent = H
+      ? '穴あき問題の記録です。金メダルは、その段のマスがぜんぶ「暗記」になると付きます。'
+      : 'ランダムと弱点で出た問題の記録です。左のメダルは、銀の輪が「じゅんばん合格」、金が「その段をぜんぶ暗記」。右の数字は、じゅんばんで全問正解したときのベストタイム（秒）です。メダルを押すと、くわしく見られます。';
     const tabs = $('recTabs'); tabs.textContent = '';
     [[false, 'ふつう（3×4=□）'], [true, '穴あき（3×□=12）']].forEach(([h, label]) => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'btn'; b.textContent = label;
       b.setAttribute('aria-pressed', String(H === h));
-      b.addEventListener('click', () => { recHole = h; selected = null; renderRecords(); });
+      b.addEventListener('click', () => { recHole = h; selected = null; selRow = null; renderRecords(); });
       tabs.appendChild(b);
     });
     const grid = $('kuku'); grid.textContent = '';
-    grid.style.gridTemplateColumns = `repeat(${N.length + 1}, minmax(0, 1fr))`;
+    grid.style.gridTemplateColumns = `repeat(${N.length + 1}, minmax(0, 1fr))` + (H ? '' : ' minmax(0, 1.25fr)');
     grid.classList.toggle('wide', N.length > 9);        // マスが多い時は色だけにして、数字は押して見る
     const head = t => { const d = document.createElement('div'); d.className = 'h'; d.textContent = t; grid.appendChild(d); };
-    head('×'); N.forEach(head);
+    head('×'); N.forEach(head); if (!H) head('⏱');
+    const seqOf = a => (data.seq[data.level] || {})[a] || {};
+    const memoOf = a => N.filter(b => cellInfo(a, b, data, H).s === 'memo').length;
     for (const a of N) {
-      head(a);
+      const sr = seqOf(a), gold = memoOf(a) === N.length, pass = !H && !!sr.pass;
+      const rh = document.createElement('button');             // 行の左端：段のメダル
+      rh.type = 'button'; rh.className = 'rh' + (pass ? ' seq' : '') + (gold ? ' gold' : '');
+      rh.textContent = a;
+      rh.setAttribute('aria-label', `${a}の段` + (pass ? ' じゅんばん合格' : '') + (gold ? ' ぜんぶ暗記' : ''));
+      rh.setAttribute('aria-pressed', String(selRow === a));
+      rh.addEventListener('click', () => { selRow = a; selected = null; renderRecords(); });
+      grid.appendChild(rh);
       for (const b of N) {
         const i = cellInfo(a, b, data, H); count[i.s]++;
         if (i.s === 'miss' || i.s === 'think') weak.push({ a, b, i });
@@ -1659,23 +1691,29 @@ button, summary { font-family: var(--font-body); }
         el.textContent = i.s === 'none' ? '' : sec(i.avg);
         el.setAttribute('aria-label', `${H ? `${a}×□=${a * b}` : `${a}×${b}`} ${LABEL[i.s]}` + (i.n ? ` 平均${sec(i.avg)}秒` : ''));
         el.setAttribute('aria-pressed', String(selected === cellKey(a, b)));
-        el.addEventListener('click', () => { selected = cellKey(a, b); renderRecords(); });
+        el.addEventListener('click', () => { selected = cellKey(a, b); selRow = null; renderRecords(); });
         grid.appendChild(el);
       }
+      if (!H) { const bt = document.createElement('div'); bt.className = 'bt'; bt.textContent = sr.best != null ? sec(sr.best) : '—'; grid.appendChild(bt); }
     }
     $('legend').innerHTML = ['memo', 'think', 'miss', 'none'].map(s =>
-      `<span><i class="sw s-${s}"></i>${LABEL[s]} ${count[s]}</span>`).join('');
+      `<span><i class="sw s-${s}"></i>${LABEL[s]} ${count[s]}</span>`).join('')
+      + (H ? '' : '<span><i class="md"></i>じゅんばん合格</span>') + '<span><i class="md gold"></i>段をぜんぶ暗記</span>';
     weak.sort((x, y) => (y.i.s === 'miss') - (x.i.s === 'miss') || y.i.avg - x.i.avg);
     $('weak').innerHTML = weak.length
       ? weak.slice(0, 6).map(w => `<li class="s-${w.i.s}">${H ? `${w.a}×□=${w.a * w.b}` : `${w.a}×${w.b}`}　${sec(w.i.avg)}秒</li>`).join('')
       : `<li class="empty">${count.none === N.length * N.length ? '遊ぶとここに出てきます。' : 'いまはありません。すごい！'}</li>`;
-    if (selected) {
+    if (selRow != null && N.includes(selRow)) {
+      const sr = seqOf(selRow), m = memoOf(selRow);
+      $('detail').innerHTML = `<b>${selRow}の段</b>　暗記 ${m}/${N.length}` + (m === N.length ? '（金メダル）' : '') + (H ? '' :
+        `<br>じゅんばん：${sr.pass ? '合格' : 'まだ'} ／ ベスト ${sr.best != null ? sec(sr.best) + '秒' : 'なし'} ／ 通した回数 ${sr.n || 0}回`);
+    } else if (selected) {
       const [a, b] = selected.split('x').map(Number), i = cellInfo(a, b, data, H);
       $('detail').innerHTML = `<b>${H ? `${a} × □ = ${a * b}（□ は ${b}）` : `${a} × ${b} = ${a * b}`}</b>　${LABEL[i.s]}<br>` + (i.n
         ? `最近の平均 ${sec(i.avg)}秒 ／ 挑戦 ${i.n}回 ／ まちがい ${i.miss}回`
         : 'まだ出題されていません。');
     } else {
-      $('detail').textContent = 'マスを押すと、その九九の記録が見られます。' + (N.length > 9 ? '' : '数字は最近3回の平均秒数です。');
+      $('detail').textContent = 'マスやメダルを押すと、くわしい記録が見られます。' + (N.length > 9 ? '' : 'マスの数字は最近3回の平均秒数です。');
     }
     $('thVal').textContent = sec(data.th);
   }
@@ -1850,6 +1888,7 @@ button, summary { font-family: var(--font-body); }
       b.addEventListener('click', fn);
       box.appendChild(b);
     };
+    $('playSum').innerHTML = `いまの設定：${summary(data)}<br>→ <b>敵${data.dans.length}人・${data.dans.length * nums().length}問</b>で1サイクル`;
     const forms = $('forms'); forms.textContent = '';
     FORMS.forEach(([k, label]) => pick(forms, label, data.form === k, () => {
       if (data.form === k) return;
@@ -1874,10 +1913,10 @@ button, summary { font-family: var(--font-body); }
       dirty = true; selected = null; save(); renderSettings(); renderRecords();
     }, i > data.unlocked));
     const n = nums().length;
-    let hint = `いまは「${LEVELS[data.level].name}」：敵ひとりにつき${n}問（かける数は ${data.level ? '1〜9 と 11〜' + nums()[n - 1] : '1〜9'}）。`;
+    let hint = `敵ひとりにつき${n}問（かける数は ${data.level ? '1〜9 と 11〜' + nums()[n - 1] : '1〜9'}）。`;
     if (data.unlocked < LEVELS.length - 1) {
       const nx = LEVELS[data.unlocked + 1], cur = LEVELS[data.unlocked];
-      hint += `「${cur.name}」の${cur.nums.length * cur.nums.length}問を、ランダムか弱点でぜんぶ「暗記」にすると「${nx.name}」が解放されます（あと${memoLeft(data.unlocked)}問）。`;
+      hint += `「${nx.name}」は、「${cur.name}」の${cur.nums.length * cur.nums.length}問をランダムか弱点でぜんぶ「暗記」にすると解放（あと${memoLeft(data.unlocked)}問）。`;
     }
     $('levelHint').textContent = hint;
 
@@ -1900,6 +1939,8 @@ button, summary { font-family: var(--font-body); }
     $('lockBtn').setAttribute('aria-pressed', String(!!data.lock));
     $('lockBtn').textContent = data.lock ? 'ロック：ON（押すと解除）' : 'ロック：OFF';
   }
+  $('dansAll').addEventListener('click', () => { data.dans = nums().slice(); dirty = true; save(); renderSettings(); });
+  $('dansNone').addEventListener('click', () => { data.dans = [Math.min(...data.dans)]; dirty = true; save(); renderSettings(); });   // 1つは残す
   $('th').addEventListener('input', e => { data.th = Number(e.target.value) * 1000; save(); renderRecords(); renderSettings(); });
   // ゲームにもどる時：ほかの画面が出ていなければ再開する
   function resume() {
@@ -1953,12 +1994,12 @@ button, summary { font-family: var(--font-body); }
       if (a === null) return;
       const b = await askPin('もう一度入力', 'たしかめのため、同じ6桁をもう一度入れてください。');
       if (b === null) return;
-      if (a === b) { data.lock = a; save(); renderSettings(); return; }
+      if (a === b) { data.lock = a; pinOk = true; save(); renderSettings(); showTab(setTab); return; }   // 決めた本人は、そのまま続けて使える
       note = '2回の数字がちがいました。最初からやり直してください。';
     }
   }
   $('lockBtn').addEventListener('click', () => {
-    if (data.lock) { data.lock = null; save(); renderSettings(); return; }   // 画面を開けている＝解除できる人
+    if (data.lock) { data.lock = null; save(); renderSettings(); showTab(setTab); return; }   // このタブを開けている＝解除できる人
     $('lockWarn').hidden = false;
     try { $('lockWarnOk').focus({ preventScroll: true }); } catch (e) {}
   });
@@ -1967,27 +2008,49 @@ button, summary { font-family: var(--font-body); }
 
   // 設定と記録の画面を開く。fromWho=true は名前えらびの画面から（その人の設定を、遊ぶ前に見る）
   let setFromWho = false;
-  async function openSettings(fromWho) {
-    if (pinResolve || !$('settings').hidden) return;
-    paused = true;
-    if (data.lock) {                               // ロック中はパスワードが合うまで開かない
+  // タブ：あそびかた／きろく／おうちの人。ロック中は「きろく」だけパスワードなしで見られる
+  const SET_TABS = [['play', 'あそびかた', 'tabPlay'], ['rec', 'きろく', 'tabRec'], ['parent', 'おうちの人', 'tabParent']];
+  let setTab = 'play', pinOk = false;    // pinOk：この画面を開いている間に、パスワードを一度通したか
+  function showTab(name) {
+    setTab = name;
+    SET_TABS.forEach(([k, , id]) => { $(id).hidden = k !== name; });
+    const bar = $('setTabs'); bar.textContent = '';
+    SET_TABS.forEach(([k, label]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'btn';
+      b.textContent = (data.lock && !pinOk && k !== 'rec' ? '🔒 ' : '') + label;
+      b.setAttribute('aria-pressed', String(k === name));
+      b.addEventListener('click', () => pickTab(k));
+      bar.appendChild(b);
+    });
+    $('settings').scrollTop = 0;
+  }
+  async function pickTab(name) {
+    if (name === setTab || pinResolve) return;
+    if (data.lock && !pinOk && name !== 'rec') {
       let note = '';
       for (;;) {
         const v = await askPin('パスワードを入力', '設定はロックされています。6桁の数字を入れてください。', note);
-        if (v === null) { resume(); return; }
+        if (v === null) return;
         if (v === data.lock) break;
         note = 'パスワードがちがいます。';
       }
+      pinOk = true;
     }
+    showTab(name);
+  }
+  function openSettings(fromWho) {
+    if (pinResolve || !$('settings').hidden) return;
+    paused = true;
     setFromWho = !!fromWho;
-    dirty = false; selected = null;
+    dirty = false; selected = null; selRow = null; pinOk = false;
     recHole = data.form === 'hole';                // いま遊んでいる形の表を先に見せる
     renderSettings(); renderRecords(); renderWorst();
     $('setTitle').textContent = fromWho ? data.name + 'の設定と記録' : '設定と記録';
     $('setClose').textContent = fromWho ? '名前えらびにもどる' : 'ゲームにもどる';
     $('who').hidden = true;
     $('settings').hidden = false;
-    $('settings').scrollTop = 0;
+    showTab(data.lock ? 'rec' : 'play');           // ロック中は、見られる「きろく」から開く
     try { $('setClose').focus({ preventScroll: true }); } catch (e) {}
   }
   $('setBtn').addEventListener('click', () => { if ($('who').hidden) openSettings(false); });
