@@ -165,7 +165,7 @@ button, summary { font-family: var(--font-body); }
   object-position: center bottom;
 }
 .enemy.has-img svg { display: none; }
-.enemy img { transform: scale(var(--size, 1)); transform-origin: 50% 100%; }
+.enemy img { transform: translateY(calc(var(--drop, 0) * 100%)) scale(var(--size, 1)); transform-origin: 50% 100%; }
 .enemy.has-img img { display: block; }
 .enemy.has-img.fallback-hit img { filter: brightness(1.25) saturate(1.3); }
 
@@ -799,8 +799,9 @@ button, summary { font-family: var(--font-body); }
     { name: 'しんじんボクサー', img: 'weak-boxer',     shirt: '#ff8a3d', hair: '#2b2140', skin: '#f6c9a0' },
     { name: 'ゾンビ軍団', img: ['zombie', 'zombie-f', 'zombie-fat'], group: true, atkWords: ['ガブッ', 'グワッ', 'ガシッ'], shirt: '#8e5bff', hair: '#7a1220', skin: '#e9b48a' },
     { name: 'ヒグマ', img: 'brown-bear', atkWords: ['ザシュッ', 'ガリッ', 'バリッ'],   shirt: '#1fb37a', hair: '#14110f', skin: '#f2d3b3' },
-    { name: 'しょうねん剣士', img: 'swordsman', atkWords: ['ズバッ', 'ザンッ', 'シャキン'], shirt: '#ff8a3d', hair: '#2b2140', skin: '#f6c9a0' },
-    { name: 'ドラゴン', img: 'dragon', size: 1.4, atk: 'fire', atkWords: ['ボォォ', 'ゴォォ', 'メラッ'], shirt: '#ff8a3d', hair: '#2b2140', skin: '#f6c9a0' },   // size：絵の中で小さく描かれたキャラを大きく見せる倍率
+    { name: 'しょうねん剣士', img: 'swordsman', size: 1.34, drop: 0.3,   // 全身の絵なので、大きくして、ひざから下を画面の下に切る
+      atkWords: ['ズバッ', 'ザンッ', 'シャキン'], shirt: '#ff8a3d', hair: '#2b2140', skin: '#f6c9a0' },
+    { name: 'ドラゴン', img: 'dragon', size: 1.4, atk: 'fire', atkWords: ['ボォォ', 'ゴォォ', 'メラッ'], shirt: '#ff8a3d', hair: '#2b2140', skin: '#f6c9a0' },   // size：絵を大きく見せる倍率／drop：絵を下にずらして足もとを切る量（絵の高さに対する割合）
   ];
   const R = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
   // モードごとに出てくる数（段にも、かける数にも使う）。10は出さない
@@ -1055,6 +1056,7 @@ button, summary { font-family: var(--font-body); }
     document.querySelectorAll('.skin').forEach(n => n.setAttribute('fill', e.skin));
     arts = artsOf(e); art = arts[0] || null;
     enemy.style.setProperty('--size', e.size || 1);
+    enemy.style.setProperty('--drop', e.drop || 0);
     arts.forEach(a => Object.values(a).forEach(u => { new Image().src = u; }));   // 先に読んでおく
     enemy.classList.toggle('has-img', !!(images.idle || art));
     groupMode = !!(e.group && art);        // 集団：問題の数だけ並べて、1問で1体たおす
