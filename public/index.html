@@ -190,6 +190,34 @@ button, summary { font-family: var(--font-body); }
 .enemy[data-state="hit"] .face-hit { display: inline; }
 .enemy[data-state="ko"] .face-ko { display: inline; }
 
+/* 集団の敵（1問で1体たおす）。ステージの大きさに合わせて、前後の列に並べる */
+.stage { container-type: size; }
+.stage.horde-mode .enemy-wrap { display: none; }
+.horde { position: absolute; inset: 0; z-index: 1; --mw: min(28cqw, 70cqh); --step: min(17cqw, 52cqh); }
+.horde.wide { --mw: min(20cqw, 62cqh); --step: min(14cqw, 44cqh); }
+.horde[hidden] { display: none; }
+.mob {
+  position: absolute;
+  left: calc(50% + var(--dx) * var(--step));
+  bottom: calc(var(--row) * min(13cqh, 9cqw) - 1cqh);
+  width: calc(var(--mw) * var(--sc));
+  aspect-ratio: 1 / 1;
+  translate: -50% 0;
+  transform-origin: 50% 100%;
+  filter: brightness(var(--br));
+  transition: left .3s ease-out, bottom .3s ease-out, width .3s ease-out, filter .3s;
+}
+.mob img {
+  width: 100%; height: 100%; display: block;
+  object-fit: contain; object-position: center bottom;
+  transform-origin: 50% 100%;
+  transform: scaleX(var(--flip));
+  animation: mobBob 1.7s ease-in-out infinite; animation-delay: var(--delay);
+  pointer-events: none;
+}
+@keyframes mobBob { 0%, 100% { transform: scaleX(var(--flip)) translateY(0); } 50% { transform: scaleX(var(--flip)) translateY(-3%); } }
+@media (prefers-reduced-motion: reduce) { .mob img { animation: none; } }
+
 /* エフェクト層 */
 .fx { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
 .spark { position: absolute; translate: -50% -50%; }
@@ -572,6 +600,7 @@ button, summary { font-family: var(--font-body); }
       </div>
     </div>
 
+    <div class="horde" id="horde" hidden></div>
     <div class="fx" id="fx"></div>
     <div class="flash" id="flash"></div>
     <div class="ko-banner" id="koBanner">K.O.!</div>
@@ -740,7 +769,7 @@ button, summary { font-family: var(--font-body); }
 
   const ENEMIES = [
     { name: 'しんじんボクサー', img: 'weak-boxer',     shirt: '#ff8a3d', hair: '#2b2140', skin: '#f6c9a0' },
-    { name: '月曜日のあくま', shirt: '#8e5bff', hair: '#7a1220', skin: '#e9b48a' },
+    { name: 'ボクサー軍団（仮）', img: 'weak-boxer', group: true, shirt: '#8e5bff', hair: '#7a1220', skin: '#e9b48a' },
     { name: 'しめきり番長',   shirt: '#1fb37a', hair: '#14110f', skin: '#f2d3b3' },
   ];
   const R = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
@@ -949,6 +978,7 @@ button, summary { font-family: var(--font-body); }
   /* ---------- 表示 ---------- */
   function setState(s) {
     enemy.dataset.state = s;
+    if (groupMode) return;                 // 集団の時は、1体ずつ別に絵を切り替える
     const set = images.idle ? images : art;
     if (set) {
       $('enemyImg').src = set[s] || set.idle;
@@ -976,13 +1006,110 @@ button, summary { font-family: var(--font-body); }
     art = artOf(e);
     if (art) Object.values(art).forEach(u => { new Image().src = u; });   // 先に読んでおく
     enemy.classList.toggle('has-img', !!(images.idle || art));
+    groupMode = !!(e.group && art);        // 集団：問題の数だけ並べて、1問で1体たおす
+    stage.classList.toggle('horde-mode', groupMode);
+    if (groupMode) buildHorde(queue.length); else { horde.hidden = true; horde.textContent = ''; mobs = []; }
     setState('idle');
   }
 
   /* ---------- 殴られ演出の部品 ---------- */
   const rand = (a, b) => a + Math.random() * (b - a);
+  /* ---------- 集団の敵 ---------- */
+  const horde = $('horde');
+  let groupMode = false, mobs = [], hordeCap = 5;   // mobs：まだ立っている敵（前の列から順）
+  function buildHorde(n) {
+    horde.textContent = ''; mobs = [];
+    hordeCap = n <= 14 ? 5 : 6;            // 1列に並べる数
+    horde.classList.toggle('wide', hordeCap > 5);
+    for (let i = 0; i < n; i++) {
+      const el = document.createElement('div'); el.className = 'mob';
+      const img = document.createElement('img'); img.alt = ''; img.src = art.idle;
+      el.style.setProperty('--flip', i % 2 ? -1 : 1);            // 同じ絵でも、向きと動きをずらして別の敵に見せる
+      el.style.setProperty('--delay', (-rand(0, 1.7)).toFixed(2) + 's');
+      el.appendChild(img); horde.appendChild(el);
+      mobs.push({ el, img });
+    }
+    horde.hidden = false;
+    layoutHorde();
+  }
+  // 立っている敵を前の列からつめて並べ直す（たおすと、後ろの敵が前に出てくる）
+  function layoutHorde() {
+    mobs.forEach((m, k) => {
+      const row = Math.floor(k / hordeCap), inRow = Math.min(hordeCap, mobs.length - row * hordeCap), col = k - row * hordeCap;
+      const s = m.el.style;
+      s.setProperty('--row', row);
+      s.setProperty('--dx', (col - (inRow - 1) / 2 + (row % 2 ? 0.18 : 0)).toFixed(2));
+      s.setProperty('--sc', [1, 0.84, 0.7, 0.6][Math.min(row, 3)]);
+      s.setProperty('--br', [1, 0.82, 0.68, 0.58][Math.min(row, 3)]);
+      s.zIndex = 10 - row;
+    });
+  }
+  // いまねらっている敵：前の列のまんなか
+  const targetMob = () => mobs[Math.floor((Math.min(hordeCap, mobs.length) - 1) / 2)];
+  const mobPose = (m, pose) => { m.img.src = art[pose] || art.idle; };
+  // 1体をたおす。toStar=true は奥へ飛んで星に、false は横へ転がって消える
+  function killMob(m, toStar) {
+    const i = mobs.indexOf(m); if (i < 0) return;
+    mobs.splice(i, 1);
+    mobPose(m, 'ko');
+    m.el.style.zIndex = 20; m.el.style.transition = 'none';
+    const d = dir, sr = stage.getBoundingClientRect(), r = m.el.getBoundingClientRect();
+    let frames, ms;
+    if (toStar) {
+      const star = { x: sr.width * (0.5 + d * rand(0.1, 0.3)), y: sr.height * rand(0.22, 0.4) };
+      const tx = sr.left + star.x - (r.left + r.width / 2), ty = sr.top + star.y - r.bottom, spin = REDUCED ? 0 : d * 720;
+      frames = [
+        { transform: 'translate(0px,0px) rotate(0deg) scale(1)', opacity: 1 },
+        { transform: `translate(${d * 14}px,-20px) rotate(${d * 24}deg) scale(1.12)`, opacity: 1, offset: 0.12 },
+        { transform: `translate(${tx}px,${ty}px) rotate(${spin}deg) scale(.03)`, opacity: 1, offset: 0.95 },
+        { transform: `translate(${tx}px,${ty}px) rotate(${spin}deg) scale(.01)`, opacity: 0 },
+      ];
+      ms = 620;
+      const g = gen;
+      setTimeout(() => { if (g === gen) twinkle(star, true); }, ms - 40);
+    } else {
+      frames = [
+        { transform: 'translate(0,0) rotate(0deg)', opacity: 1 },
+        { transform: `translate(${d * r.width * 0.9}px,${-r.height * 0.5}px) rotate(${d * 160}deg)`, opacity: 1, offset: 0.6 },
+        { transform: `translate(${d * r.width * 1.5}px,${r.height * 0.2}px) rotate(${d * 300}deg) scale(.7)`, opacity: 0 },
+      ];
+      ms = 480;
+    }
+    m.el.animate(frames, { duration: ms, easing: 'cubic-bezier(.2,.6,.3,1)', fill: 'forwards' }).onfinish = () => m.el.remove();
+    layoutHorde();
+  }
+  // 集団への打撃。正解のたびに1体たおす。最後の問題では、残っている全員をまとめて吹っ飛ばす
+  function hitHorde(heavy, ko, perfect, g) {
+    const m = targetMob();
+    const at = () => {
+      const s = stage.getBoundingClientRect(), r = (m && m.el.isConnected ? m.el : horde).getBoundingClientRect();
+      return { x: r.left - s.left + r.width * rand(0.35, 0.65), y: r.top - s.top + r.height * rand(0.25, 0.5) };
+    };
+    const jab = () => {
+      const pt = at();
+      if (m) { mobPose(m, 'hit'); m.el.animate([{ transform: 'translate(0,0)' }, { transform: `translate(${dir * 10}px,-4px) rotate(${dir * 6}deg)` }, { transform: 'translate(0,0)' }], { duration: 120 }); }
+      spark(pt, false); sndJab(); shake(0.35); bits(pt, 2);
+    };
+    const big = () => {
+      if (g !== gen) return;
+      const pt = at();
+      spark(pt, true);
+      if (!ko) { sndStraight(); flashScreen(0.5); bits(pt, 9); shake(0.8); if (m) killMob(m, true); return; }
+      sndKO(); flashScreen(1); bits(pt, perfect ? 34 : 16);
+      if (perfect) {
+        setTimeout(() => { if (g === gen) { spark(at(), true); flashScreen(1); } }, 110);
+        setTimeout(() => { if (g === gen) spark(at(), true); }, 210);
+      }
+      setTimeout(() => { if (g !== gen) return; shake(perfect ? 1.9 : 1.4); knockout(perfect); }, perfect ? 330 : 150);
+    };
+    if (heavy) { jab(); setTimeout(() => { dir = -dir; big(); }, ONE_TWO); }
+    else if (ko) big();
+    else { jab(); setTimeout(() => { if (g === gen && m) killMob(m, false); }, 90); }
+    return ko;
+  }
+
   function hitPoint() {
-    const s = stage.getBoundingClientRect(), e = enemy.getBoundingClientRect();
+    const s = stage.getBoundingClientRect(), e = (groupMode && mobs.length ? targetMob().el : enemy).getBoundingClientRect();
     return {
       x: e.left - s.left + e.width * (0.5 - dir * 0.1 + rand(-0.1, 0.1)),
       y: e.top - s.top + e.height * rand(0.28, 0.5),
@@ -1065,7 +1192,7 @@ button, summary { font-family: var(--font-body); }
   function counterPunch() {
     dir = -dir;
     const d = dir, g = gen, pt = hitPoint();
-    enemyWrap.animate([
+    (groupMode && mobs.length ? targetMob().el : enemyWrap).animate([
       { transform: 'translate(0,0) rotate(0deg)' },
       { transform: `translate(${d * 52 * M}px,8px) rotate(${d * 15 * M}deg)`, offset: 0.25 },
       { transform: `translate(${d * 52 * M}px,8px) rotate(${d * 15 * M}deg)`, offset: 0.6 },
@@ -1077,6 +1204,20 @@ button, summary { font-family: var(--font-body); }
   let punchTimer = 0;
   function punchPlayer(counter) {
     const skin = ENEMIES[enemyIdx % ENEMIES.length].skin;
+    if (groupMode && mobs.length) {                  // 集団：ねらっている1体が、攻撃の絵で手前に迫ってくる
+      const m = targetMob(), g = gen;
+      const z = REDUCED ? 1.3 : Math.max(1.6, Math.min(4, stage.getBoundingClientRect().height * 1.25 / m.el.getBoundingClientRect().height));
+      mobPose(m, 'attack'); m.el.style.zIndex = 30;
+      m.el.animate([
+        { transform: 'scale(1)', easing: 'cubic-bezier(.2,.9,.3,1)' },
+        { transform: `scale(${z}) translateY(8%)`, offset: 0.22 },
+        { transform: `scale(${z * 0.97}) translateY(8%)`, offset: 0.6 },
+        { transform: 'scale(1)' },
+      ], { duration: 430 });
+      setTimeout(() => { if (g === gen && mobs.includes(m)) { mobPose(m, 'idle'); layoutHorde(); } }, 430);
+      punchImpact(counter);
+      return;
+    }
     if (!images.idle && art && art.attack) {         // 攻撃の絵がある敵：その絵に切り替えて、ぐっと手前に寄せる
       setState('attack');
       clearTimeout(stateTimer);
@@ -1190,7 +1331,7 @@ button, summary { font-family: var(--font-body); }
     loadEnemy();
     $('question').classList.remove('reveal');
     $('question').innerHTML = '<span class="wait">よーい…</span>';
-    enemyWrap.animate([
+    (groupMode ? horde : enemyWrap).animate([
       { transform: 'translateY(60%)' }, { transform: 'translateY(-4%)', offset: 0.7 }, { transform: 'translateY(0)' },
     ], { duration: 380, easing: 'ease-out' });
     setTimeout(() => { if (g === gen) countdown(nextQuestion); }, 500);
@@ -1252,6 +1393,7 @@ button, summary { font-family: var(--font-body); }
     const perfect = ko && flawless;        // この敵の全問を速く正解した
     if (ko) runResult = finishRun();
     clearTimeout(stateTimer);
+    if (groupMode) return hitHorde(heavy, ko, perfect, g);
 
     const jab = () => {                    // ジャブ：即座に軽く
       const pt = hitPoint();
@@ -1340,7 +1482,9 @@ button, summary { font-family: var(--font-body); }
     const star = { x: sr.width * (0.5 + d * 0.2), y: sr.height * 0.34 };          // 星になる位置（ステージ内）
     const tx = sr.left + star.x - (wr.left + wr.width / 2), ty = sr.top + star.y - wr.bottom;
     const spin = REDUCED ? 0 : d * (perfect ? 1440 : 720);
-    enemyWrap.animate([
+    if (groupMode) {                       // 集団：残っている全員を、少しずつずらして吹っ飛ばす
+      mobs.slice().forEach((m, i) => setTimeout(() => { if (g === gen) { dir = i % 2 ? d : -d; killMob(m, true); } }, i * 70));
+    } else enemyWrap.animate([
       { transform: 'translate(0px,0px) rotate(0deg) scale(1)', opacity: 1 },
       { transform: `translate(${d * 18}px,-26px) rotate(${d * 24}deg) scale(${perfect ? 1.3 : 1.12})`, opacity: 1, offset: 0.1 },
       { transform: `translate(${tx}px,${ty}px) rotate(${spin}deg) scale(.03)`, opacity: 1, offset: 0.96 },
