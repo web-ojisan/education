@@ -242,6 +242,11 @@ button, summary { font-family: var(--font-body); }
 .punch svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .punch .ink { stroke-width: 3.2; }
 .ouch { position: absolute; inset: 0; background: var(--hit); opacity: 0; }
+/* 火を吐く敵の攻撃：下から炎が画面をおおう */
+.burn { position: absolute; inset: 0 0 -15% 0; opacity: 0; background:
+  radial-gradient(ellipse 70% 55% at 50% 105%, rgba(255,246,170,.95), rgba(255,214,10,.85) 35%, rgba(255,120,0,.8) 60%, rgba(255,59,48,.55) 80%, transparent 100%),
+  linear-gradient(to top, rgba(255,120,0,.75), rgba(255,59,48,.35) 60%, transparent); }
+.ember { position: absolute; bottom: -10px; width: 12px; height: 16px; border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; background: #ffd60a; border: 2px solid #ff3b30; }
 .enemy.punching .guard-r { visibility: hidden; }
 .twinkle { position: absolute; width: 130px; height: 130px; translate: -50% -50%; }
 .twinkle svg { width: 100%; height: 100%; display: block; overflow: visible; }
@@ -792,9 +797,9 @@ button, summary { font-family: var(--font-body); }
 
   const ENEMIES = [
     { name: 'しんじんボクサー', img: 'weak-boxer',     shirt: '#ff8a3d', hair: '#2b2140', skin: '#f6c9a0' },
-    { name: 'ゾンビ軍団', img: ['zombie', 'zombie-f', 'zombie-fat'], group: true, shirt: '#8e5bff', hair: '#7a1220', skin: '#e9b48a' },
-    { name: 'ヒグマ', img: 'brown-bear',   shirt: '#1fb37a', hair: '#14110f', skin: '#f2d3b3' },
-    { name: 'ドラゴン', img: 'dragon', size: 1.4, shirt: '#ff8a3d', hair: '#2b2140', skin: '#f6c9a0' },   // size：絵の中で小さく描かれたキャラを大きく見せる倍率
+    { name: 'ゾンビ軍団', img: ['zombie', 'zombie-f', 'zombie-fat'], group: true, atkWords: ['ガブッ', 'グワッ', 'ガシッ'], shirt: '#8e5bff', hair: '#7a1220', skin: '#e9b48a' },
+    { name: 'ヒグマ', img: 'brown-bear', atkWords: ['ザシュッ', 'ガリッ', 'バリッ'],   shirt: '#1fb37a', hair: '#14110f', skin: '#f2d3b3' },
+    { name: 'ドラゴン', img: 'dragon', size: 1.4, atk: 'fire', atkWords: ['ボォォ', 'ゴォォ', 'メラッ'], shirt: '#ff8a3d', hair: '#2b2140', skin: '#f6c9a0' },   // size：絵の中で小さく描かれたキャラを大きく見せる倍率
   ];
   const R = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
   // モードごとに出てくる数（段にも、かける数にも使う）。10は出さない
@@ -813,6 +818,7 @@ button, summary { font-family: var(--font-body); }
     ['hole', '穴あき', '3 × □ = 12 の形で出します。わり算の考え方の練習になります。記録は別の表に残ります。'],
     ['mix',  'まぜる', 'ふつうと穴あきを、まぜて出します。'],
   ];
+  // 敵の一覧に書ける攻撃の指定：atkWords＝当たった時の文字（書かなければパンチの文字）、atk: 'fire'＝炎の音と、炎が画面をおおう演出
   const SFX_JAB = ['ペシ', 'パシ', 'ポコ', 'ビシ'];
   const SFX_HEAVY = ['ドカッ', 'バキッ', 'ボコッ', 'ズドン'];
 
@@ -947,6 +953,24 @@ button, summary { font-family: var(--font-body); }
       const hf = a.createBiquadFilter(), hg = a.createGain();
       hf.type = 'highpass'; hf.frequency.value = 1500; hg.gain.value = 0.7;
       crack.connect(hf).connect(hg).connect(bus); crack.start(T);
+    } catch (e) {}
+  }
+  // 炎：ごうっと広がる音（約0.7秒）。低いうなりと、ぱちぱちはぜる高い音
+  function sndFire() {
+    const a = ac(); if (!a) return;
+    try {
+      const t = a.currentTime, dest = out(a);
+      const roar = noise(a, 0.75, x => Math.sin(Math.PI * Math.min(1, x * 1.15)) * (1 - x * 0.5));
+      const f = a.createBiquadFilter(), g = a.createGain();
+      f.type = 'bandpass'; f.Q.value = 0.7;
+      f.frequency.setValueAtTime(260, t); f.frequency.exponentialRampToValueAtTime(1500, t + 0.22); f.frequency.exponentialRampToValueAtTime(420, t + 0.75);
+      g.gain.value = 1.5;
+      roar.connect(f).connect(g).connect(dest); roar.start(t);
+      sweep(a, 'sawtooth', 70, 46, t, 0.6, 0.3, dest);                   // 低いうなり
+      const crackle = noise(a, 0.6, x => (Math.random() < 0.06 ? 1 : 0.05) * (1 - x));
+      const hf = a.createBiquadFilter(), hg = a.createGain();
+      hf.type = 'highpass'; hf.frequency.value = 3200; hg.gain.value = 0.7;
+      crackle.connect(hf).connect(hg).connect(dest); crackle.start(t + 0.05);
     } catch (e) {}
   }
   // パーフェクトのファンファーレ：駆け上がる4音と、最後の和音
@@ -1200,12 +1224,12 @@ button, summary { font-family: var(--font-body); }
     }
     return pts.join(' ');
   }
-  function spark(pt, heavy) {
+  function spark(pt, heavy, word) {
     const el = document.createElement('div');
     el.className = 'spark';
     const size = heavy ? 210 : 96;
     el.style.cssText = `left:${pt.x}px;top:${pt.y}px;width:${size}px;height:${size}px`;
-    const label = (heavy ? SFX_HEAVY : SFX_JAB)[Math.floor(Math.random() * 4)];
+    const label = word || (heavy ? SFX_HEAVY : SFX_JAB)[Math.floor(Math.random() * 4)];
     el.innerHTML = `<svg viewBox="0 0 100 100">
       <polygon points="${star(heavy ? 11 : 8, 0.14)}" fill="${heavy ? '#ff3b30' : '#ffd60a'}" stroke="#14110f" stroke-width="${heavy ? 3 : 5}" stroke-linejoin="round"/>
       ${heavy ? `<polygon points="${star(11, 0.1)}" fill="#ffd60a" transform="translate(50 50) scale(.72) translate(-50 -50)"/>` : ''}
@@ -1312,11 +1336,33 @@ button, summary { font-family: var(--font-body); }
     punchImpact(counter);
   }
   function punchImpact(counter) {
+    const e = ENEMIES[enemyIdx % ENEMIES.length];
+    const word = e.atkWords ? e.atkWords[Math.floor(Math.random() * e.atkWords.length)] : null;
     setTimeout(() => {                               // 当たった瞬間
-      thump(counter ? 1 : 0.8); shake(counter ? 1.3 : 0.9);
       const r = stage.getBoundingClientRect();
       if (counter) floatText(r.width / 2, r.height * 0.24, 'カウンター！', true);
-      spark({ x: r.width * rand(0.3, 0.7), y: r.height * rand(0.3, 0.6) }, true);
+      if (e.atk === 'fire') {                        // 炎：打撃音のかわりに炎の音、赤い光のかわりに下から炎
+        sndFire(); shake(counter ? 1.1 : 0.7);
+        spark({ x: r.width * rand(0.3, 0.7), y: r.height * rand(0.3, 0.55) }, true, word);
+        const b = document.createElement('div');
+        b.className = 'burn'; fx.insertBefore(b, fx.firstChild);
+        b.animate(REDUCED ? [{ opacity: 0.5 }, { opacity: 0 }] : [
+          { opacity: 0, transform: 'translateY(45%)' }, { opacity: 1, transform: 'translateY(0)', offset: 0.25 },
+          { opacity: 0.9, transform: 'translateY(-4%)', offset: 0.6 }, { opacity: 0, transform: 'translateY(-10%)' },
+        ], { duration: 620, easing: 'ease-out' }).onfinish = () => b.remove();
+        if (!REDUCED) for (let i = 0; i < 16; i++) {  // 舞い上がる火の粉
+          const m = document.createElement('div');
+          m.className = 'ember'; m.style.left = rand(4, 96) + '%';
+          fx.appendChild(m);
+          m.animate([
+            { transform: 'translate(0,0) scale(1)', opacity: 1 },
+            { transform: `translate(${rand(-40, 40)}px,${-r.height * rand(0.5, 1.05)}px) scale(.3)`, opacity: 0 },
+          ], { duration: rand(450, 850), delay: rand(0, 220), easing: 'ease-out', fill: 'backwards' }).onfinish = () => m.remove();
+        }
+        return;
+      }
+      thump(counter ? 1 : 0.8); shake(counter ? 1.3 : 0.9);
+      spark({ x: r.width * rand(0.3, 0.7), y: r.height * rand(0.3, 0.6) }, true, word);
       if (!REDUCED) {
         const o = document.createElement('div');
         o.className = 'ouch'; fx.insertBefore(o, fx.firstChild);   // 拳より奥に敷く
