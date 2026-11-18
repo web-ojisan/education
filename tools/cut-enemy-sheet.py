@@ -82,12 +82,17 @@ for i, name in enumerate(NAMES):
 # then put each on a square canvas, bottom-centered.
 top = min(int(np.where(b.any(1))[0].min()) for _, _, b in cut)
 top = max(0, top - 8)
+ready = []
 for name, rgba, body in cut:
-    rgba = rgba[top:]
-    ph, pw = rgba.shape[:2]
+    bottom = int(np.where(body.any(1))[0].max()) + 1       # stand each pose on the canvas floor (some sheets leave a gap below)
+    rgba, body = rgba[top:bottom], body[top:bottom]
     xs_ = np.where(body.any(0))[0]
     cx = (int(xs_.min()) + int(xs_.max())) // 2            # center the character horizontally
-    side = max(ph, 2 * max(cx - int(xs_.min()), int(xs_.max()) - cx) + 16)
+    need = max(rgba.shape[0], 2 * max(cx - int(xs_.min()), int(xs_.max()) - cx) + 16)
+    ready.append((name, rgba, cx, need))
+side = max(r[3] for r in ready)                            # one canvas size for all poses = same scale in the game
+for name, rgba, cx, _ in ready:
+    ph, pw = rgba.shape[:2]
     canvas = Image.new('RGBA', (side, side), (0, 0, 0, 0))
     canvas.paste(Image.fromarray(rgba, 'RGBA'), (side // 2 - cx, side - ph))
     canvas = canvas.resize((SIZE, SIZE), Image.LANCZOS)
