@@ -1,6 +1,11 @@
 """Cut a 2x2 character sheet on a magenta background into 4 transparent square PNGs.
 
-usage: python3 -I cut-enemy-sheet.py SHEET OUT_DIR [SIZE]
+usage: python3 -I cut-enemy-sheet.py SHEET OUT_DIR [SIZE] [--keep-thin]
+
+--keep-thin  keep thin parts that are attached to the character (claws, antennae, whiskers).
+             Use it for sheets whose background has no speed lines; without it, thin things are
+             treated as speed lines and removed.
+Small sheets (under 1600px) are enlarged first so the cut edge stays smooth.
 Writes idle/hit/ko/attack as .webp (transparent).
 """
 import sys, os
@@ -8,12 +13,17 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
 
-src, out = sys.argv[1], sys.argv[2]
-SIZE = int(sys.argv[3]) if len(sys.argv) > 3 else 640
+args = [x for x in sys.argv[1:] if not x.startswith('--')]
+KEEP_THIN = '--keep-thin' in sys.argv
+src, out = args[0], args[1]
+SIZE = int(args[2]) if len(args) > 2 else 640
 NAMES = ['idle', 'hit', 'ko', 'attack']          # top-left, top-right, bottom-left, bottom-right
 os.makedirs(out, exist_ok=True)
 
 im = Image.open(src).convert('RGB')
+if im.size[0] < 1600:
+    k = -(-1600 // im.size[0])
+    im = im.resize((im.size[0] * k, im.size[1] * k), Image.LANCZOS)
 W, H = im.size
 a = np.asarray(im).astype(np.float32) / 255
 r, g, b = a[..., 0], a[..., 1], a[..., 2]
@@ -53,7 +63,11 @@ for i, name in enumerate(NAMES):
     if n == 0: raise SystemExit('no character found in panel ' + name)
     sizes = ndi.sum(core, lab, range(1, n + 1))
     body = lab == (1 + int(np.argmax(sizes)))
-    body = ndi.binary_dilation(body, st, iterations=R + 2) & fg
+    if KEEP_THIN:                                  # everything connected to the character stays
+        lab2, _ = ndi.label(fg, st)
+        body = np.isin(lab2, np.unique(lab2[body])) & fg
+    else:
+        body = ndi.binary_dilation(body, st, iterations=R + 2) & fg
     body = body | (ndi.binary_fill_holes(body) & ~bg)     # fill pinholes inside the character, but keep real gaps (e.g. between arm and body) open
     # soften the edge a little and remove magenta fringe
     alpha = ndi.gaussian_filter(body.astype(np.float32), 0.8)

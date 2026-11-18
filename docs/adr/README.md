@@ -16,4 +16,4 @@
 | [0009](0009-countdown-and-ko-pause.md) | カウントダウンとKO後の間 | 採用 |
 | [0010](0010-sequential-vs-random-records.md) | じゅんばんの記録とばらばらの記録を分ける | 採用 |
 | [0011](0011-who-screen-settings-and-rotate-notice.md) | 名前えらびからの設定確認と、たて持ちのお知らせ | 採用 |
-| [0012](0012-group-enemies.md) | 集団の敵（1問で1体たおす） | 試作 |
+| [0012](0012-group-enemies.md) | 集団の敵（正解のたびに3体たおす） | 採用 |

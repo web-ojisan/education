@@ -764,7 +764,7 @@ button, summary { font-family: var(--font-body); }
 
   const ENEMIES = [
     { name: 'しんじんボクサー', img: 'weak-boxer',     shirt: '#ff8a3d', hair: '#2b2140', skin: '#f6c9a0' },
-    { name: 'ボクサー軍団（仮）', img: 'weak-boxer', group: true, shirt: '#8e5bff', hair: '#7a1220', skin: '#e9b48a' },
+    { name: 'ゾンビ軍団', img: ['zombie', 'zombie-f', 'zombie-fat'], group: true, shirt: '#8e5bff', hair: '#7a1220', skin: '#e9b48a' },
     { name: 'しめきり番長',   shirt: '#1fb37a', hair: '#14110f', skin: '#f2d3b3' },
   ];
   const R = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
@@ -799,8 +799,9 @@ button, summary { font-family: var(--font-body); }
   // 敵ごとの絵。ENEMIES に img: 'フォルダ名' と書くと img/enemies/フォルダ名/ の idle・hit・ko・attack.webp を使う。
   // 書いていない敵は、コードで描いた仮の絵で動く
   const IMG_DIR = 'img/enemies/', POSES = ['idle', 'hit', 'ko', 'attack'];
-  let art = null;
-  const artOf = e => e.img ? Object.fromEntries((e.poses || POSES).map(k => [k, IMG_DIR + e.img + '/' + k + '.webp'])) : null;
+  // img を ['a', 'b'] のように複数書くと、集団の敵はそれらを混ぜて並べる（単体の敵は1つ目を使う）
+  let art = null, arts = [];
+  const artsOf = e => [].concat(e.img || []).map(dir => Object.fromEntries((e.poses || POSES).map(k => [k, IMG_DIR + dir + '/' + k + '.webp'])));
 
   /* ---------- 音（Web Audioで合成） ---------- */
   let audio = null, soundOn = true;
@@ -998,8 +999,8 @@ button, summary { font-family: var(--font-body); }
     $('shirt').setAttribute('fill', e.shirt);
     $('hair').setAttribute('fill', e.hair);
     document.querySelectorAll('.skin').forEach(n => n.setAttribute('fill', e.skin));
-    art = artOf(e);
-    if (art) Object.values(art).forEach(u => { new Image().src = u; });   // 先に読んでおく
+    arts = artsOf(e); art = arts[0] || null;
+    arts.forEach(a => Object.values(a).forEach(u => { new Image().src = u; }));   // 先に読んでおく
     enemy.classList.toggle('has-img', !!(images.idle || art));
     groupMode = !!(e.group && art);        // 集団：問題の数だけ並べて、1問で1体たおす
     stage.classList.toggle('horde-mode', groupMode);
@@ -1017,12 +1018,14 @@ button, summary { font-family: var(--font-body); }
     horde.textContent = ''; mobs = [];
     for (let i = 0; i < questions * GROUP_PER; i++) {
       const el = document.createElement('div'); el.className = 'mob';
-      const img = document.createElement('img'); img.alt = ''; img.src = art.idle;
+      const mine = arts[i % arts.length];                          // 絵が何種類かあれば、順番に割りふる（並びは下でまぜる）
+      const img = document.createElement('img'); img.alt = ''; img.src = mine.idle;
       el.style.setProperty('--flip', Math.random() < 0.5 ? -1 : 1);   // 同じ絵でも、向き・動き・位置・大きさをずらして別の敵に見せる
       el.style.setProperty('--delay', (-rand(0, 1.7)).toFixed(2) + 's');
       el.appendChild(img); horde.appendChild(el);
-      mobs.push({ el, img, jx: rand(-1, 1), jy: rand(-1, 1), js: rand(0.94, 1.06) });
+      mobs.push({ el, img, art: mine, jx: rand(-1, 1), jy: rand(-1, 1), js: rand(0.94, 1.06) });
     }
+    for (let i = mobs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [mobs[i], mobs[j]] = [mobs[j], mobs[i]]; }
     horde.hidden = false;
     layoutHorde();
   }
@@ -1063,7 +1066,7 @@ button, summary { font-family: var(--font-body); }
     return out;
   }
   const targetMob = () => targetMobs(1)[0];
-  const mobPose = (m, pose) => { m.img.src = art[pose] || art.idle; };
+  const mobPose = (m, pose) => { m.img.src = m.art[pose] || m.art.idle; };
   // 1体をたおす。toStar=true は奥へ飛んで星に、false は横へ転がって消える
   function killMob(m, toStar, noLayout) {
     const i = mobs.indexOf(m); if (i < 0) return;
