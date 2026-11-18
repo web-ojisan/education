@@ -14,7 +14,7 @@
 - **構図**：正面向き、腰から上。4ポーズとも同じ大きさ・同じ位置。体の下端はマスの下端で切れてよい。
 - **背景**：マゼンタ（#FF00FF）の単色。影・地面・模様・文字・枠線は入れない。
 - **絵柄**：太い黒の輪郭線、ベタ塗りに近いはっきりした色、少年漫画とカートゥーンの中間。子供向けで、怖すぎない。血や傷の生々しい表現はなし。
-- **ファイル名**：`art/raw/<名前>.png`（例：`art/raw/weak-boxer.png`）
+- **ファイル名**：`art/raw/<名前>.jpg` または `.png`（例：`art/raw/weak-boxer.jpg`）
 
 ## 共通の指示文
 
@@ -53,16 +53,30 @@
 
 ## ゲームへの組み込み
 
-シートを4枚に切り分けて背景を透明にし、次の場所に置きます（→ [ADR 0007](adr/0007-enemy-images.md)）。
+シートを `art/raw/<名前>.jpg`（または `.png`）に置き、切り分けの道具を実行します。4ポーズに切り分け、マゼンタの背景・集中線・星などの飾りを取りのぞいて、背景が透明な画像にします（→ [ADR 0007](adr/0007-enemy-images.md)）。
+
+```bash
+python3 -I tools/cut-enemy-sheet.py art/raw/weak-boxer.jpg public/img/enemies/weak-boxer 640
+```
+
+（Python と、`pillow`・`numpy`・`scipy` が必要です。）
+
+できあがるファイル：
 
 ```
-public/img/enemies/<名前>/idle.png    構え
-public/img/enemies/<名前>/hit.png     殴られ顔
-public/img/enemies/<名前>/ko.png      KO
-public/img/enemies/<名前>/attack.png  攻撃
+public/img/enemies/<名前>/idle.webp    構え
+public/img/enemies/<名前>/hit.webp     殴られ顔
+public/img/enemies/<名前>/ko.webp      KO
+public/img/enemies/<名前>/attack.webp  攻撃
 ```
 
 そのうえで `public/index.html` の敵の一覧（`ENEMIES`）に `img: '<名前>'` を書き足すと、その敵が画像で表示されます。
+
+### 切り分けの道具がしていること・苦手なこと
+
+- マゼンタ系の色（濃淡や網点も含む）を背景として抜きます。**キャラクターの服や体にマゼンタ・ピンク紫を使うと、そこも抜けてしまいます。**
+- 細い線（集中線）と、キャラクターから離れた飾り（星、汗、文字）は取りのぞきます。**キャラクターにくっついた飾り（ほおの横の火花など）は残ります。**
+- 4ポーズは同じ縮尺のまま出力します。ポーズごとにキャラクターの大きさが違うシートは、ゲームでも大きさが違って見えます。
 
 ## 注意
 

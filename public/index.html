@@ -739,7 +739,7 @@ button, summary { font-family: var(--font-body); }
   const M = REDUCED ? 0.25 : 1;           // 演出の強さ。ここを変えると全体の派手さが変わる
 
   const ENEMIES = [
-    { name: 'ねむけ大王',     shirt: '#ff8a3d', hair: '#2b2140', skin: '#f6c9a0' },
+    { name: 'しんじんボクサー', img: 'weak-boxer',     shirt: '#ff8a3d', hair: '#2b2140', skin: '#f6c9a0' },
     { name: '月曜日のあくま', shirt: '#8e5bff', hair: '#7a1220', skin: '#e9b48a' },
     { name: 'しめきり番長',   shirt: '#1fb37a', hair: '#14110f', skin: '#f2d3b3' },
   ];
@@ -772,11 +772,11 @@ button, summary { font-family: var(--font-body); }
   let flawless = true;  // いまの敵に、ここまで全問「速く正解」しているか
   let perfects = 0;     // このサイクルでパーフェクトにたおした敵の数
   const images = { idle: null, hit: null, ko: null };   // 設定画面から手で差し替えた絵（全部の敵に使う）
-  // 敵ごとの絵。ENEMIES に img: 'フォルダ名' と書くと img/enemies/フォルダ名/ の idle・hit・ko・attack.png を使う。
+  // 敵ごとの絵。ENEMIES に img: 'フォルダ名' と書くと img/enemies/フォルダ名/ の idle・hit・ko・attack.webp を使う。
   // 書いていない敵は、コードで描いた仮の絵で動く
   const IMG_DIR = 'img/enemies/', POSES = ['idle', 'hit', 'ko', 'attack'];
   let art = null;
-  const artOf = e => e.img ? Object.fromEntries((e.poses || POSES).map(k => [k, IMG_DIR + e.img + '/' + k + '.png'])) : null;
+  const artOf = e => e.img ? Object.fromEntries((e.poses || POSES).map(k => [k, IMG_DIR + e.img + '/' + k + '.webp'])) : null;
 
   /* ---------- 音（Web Audioで合成） ---------- */
   let audio = null, soundOn = true;
