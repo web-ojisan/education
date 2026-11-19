@@ -718,7 +718,7 @@ button, summary { font-family: var(--font-body); }
       <div class="setting">
         <h3>この人は</h3>
         <div class="choice" id="adultPick"></div>
-        <p class="hint">「おとな」にすると、名前の横に印が付きます。「くらべる」で、こどもがおとなに勝っている段が分かります。</p>
+        <p class="hint">「おとな」にすると、名前の横に印が付きます。こどもとくらべる時は、ハンデとして1問につき2秒がおとなのタイムに足されます。</p>
       </div>
       <div class="setting">
         <h3>設定のロック</h3>
@@ -1510,9 +1510,11 @@ button, summary { font-family: var(--font-body); }
     const rv = res.rival; if (!rv || res.time == null) return '';
     const el = document.createElement('span'); el.textContent = rv.p.name;          // 名前はそのまま文字として入れる
     const name = el.innerHTML;
-    return res.time < rv.time
-      ? `<small class="win">${name}に勝った！（${sec(rv.time)}秒）</small>`
-      : `<small>${name}まで あと${sec(res.time - rv.time)}秒</small>`;
+    const mine = res.time + handicapOf(data);       // おとなが遊んでいる時は、自分にハンデが付く
+    const note = rv.hc || handicapOf(data) ? 'ハンデこみ ' : '';
+    return mine < rv.time
+      ? `<small class="win">${name}に勝った！（${note}${sec(rv.time)}秒）</small>`
+      : `<small>${name}まで あと${sec(mine - rv.time)}秒</small>`;
   }
   function showRunResult(res, ms) {
     const el = document.createElement('div');
@@ -2104,10 +2106,14 @@ button, summary { font-family: var(--font-body); }
   let setFromWho = false;
   /* ---------- くらべる（みんなの成績） ---------- */
   const seqBest = (p, a, level = data.level) => { const r = ((p.seq || {})[level] || {})[a]; return r && r.best != null ? r.best : null; };
+  // おとなのハンデ：こどもとくらべる時、おとなのタイムに1問につき2秒を足す（記録そのものは変えない）
+  const ADULT_HANDICAP = 2000;
+  const handicapOf = p => p.adult && store.profiles.some(x => !x.adult) ? ADULT_HANDICAP * nums().length : 0;
+  const effBest = (p, a) => { const t = seqBest(p, a); return t == null ? null : t + handicapOf(p); };
   // じゅんばんのベストタイムで、いま遊んでいる人のライバルになる人（ほかの人のうち、いちばん速い人）
   function rivalFor(a) {
     let best = null;
-    store.profiles.forEach(p => { if (p === data) return; const t = seqBest(p, a); if (t != null && (!best || t < best.time)) best = { p, time: t }; });
+    store.profiles.forEach(p => { if (p === data) return; const t = effBest(p, a); if (t != null && (!best || t < best.time)) best = { p, time: t, hc: handicapOf(p) }; });
     return best;
   }
   function renderVs() {
@@ -2120,7 +2126,7 @@ button, summary { font-family: var(--font-body); }
     // 段ごとのベストタイム。いちばん速い人に色を付ける
     N.forEach(a => {
       add('vl', a + 'の段');
-      const ts = P.map(p => seqBest(p, a)), top = Math.min(...ts.filter(t => t != null));
+      const ts = P.map(p => effBest(p, a)), top = Math.min(...ts.filter(t => t != null));
       ts.forEach(t => add('vc' + (t != null && t === top ? ' top' : ''), t != null ? sec(t) : '—'));
     });
     add('sep', '');
@@ -2142,7 +2148,7 @@ button, summary { font-family: var(--font-body); }
     else {
       let win = 0, played = 0;
       N.forEach(a => {
-        const mine = seqBest(data, a), theirs = others.map(p => seqBest(p, a)).filter(t => t != null);
+        const mine = effBest(data, a), theirs = others.map(p => effBest(p, a)).filter(t => t != null);
         if (mine == null || !theirs.length) return;
         played++;
         if (data.adult ? mine > Math.min(...theirs) : mine < Math.min(...theirs)) win++;
@@ -2151,7 +2157,9 @@ button, summary { font-family: var(--font-body); }
         ? `こどもに負けている段：<b>${win}</b> / ${played}`
         : `おとなに勝っている段：<b>${win}</b> / ${played}` + (played && win === played ? '　ぜんぶ勝ち！' : '');
     }
+    const hc = P.some(p => p.adult) && P.some(p => !p.adult) ? ADULT_HANDICAP * N.length / 1000 : 0;
     $('vsHint').textContent = '上の数字は、じゅんばんタイプでその段を全問正解したときのベストタイム（秒）です。黄色がいちばん速い人。'
+      + (hc ? `おとなはハンデとして、1問につき${ADULT_HANDICAP / 1000}秒（1つの段で${hc}秒）を足した数字です。` : '')
       + (data.level ? `いまは「${LEVELS[data.level].name}」の成績をくらべています。` : '');
   }
 
