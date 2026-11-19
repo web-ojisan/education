@@ -270,6 +270,19 @@ button, summary { font-family: var(--font-body); }
   -webkit-text-stroke: 7px var(--ink); paint-order: stroke fill;
   font-size: clamp(20px, 6.5vh, 38px); line-height: 1.4;
 }
+.hc-scene { position: absolute; inset: 0; z-index: 9; display: grid; place-items: center; cursor: pointer;
+  background: radial-gradient(ellipse at center, rgba(90,0,10,.55), rgba(8,0,2,.92) 70%), rgba(8,0,2,.92); background-color: rgba(8,0,2,.92); }
+.hc-scene.gold { background: radial-gradient(ellipse at center, rgba(255,246,170,.95), rgba(255,214,10,.9) 55%, rgba(255,138,61,.9)); }
+.hc-box { text-align: center; padding: 0 4%; font-family: var(--font-display); }
+.hc-box b { display: block; font-weight: 400; font-size: clamp(20px, min(6vw, 13vh), 54px); line-height: 1.3; color: #ff3b30; text-shadow: 0 0 .5em #ff3b30, 0 0 1.2em #7a0010; }
+.hc-box span { display: block; margin-top: .5em; font-size: clamp(13px, min(3.2vw, 7vh), 26px); color: #f3e9e9; }
+.hc-scene.gold .hc-box b { color: var(--ink); text-shadow: 0 0 .4em #fff; }
+.hc-scene.gold .hc-box span { color: var(--ink); }
+.hc-box i { display: block; font-style: normal; font-size: clamp(24px, 10vh, 80px); line-height: 1.1; }
+.hc-scene.gold .hc-box b { font-size: clamp(18px, min(5vw, 10vh), 50px); }
+.hc-scene.gold .hc-box span { margin-top: .2em; }
+.vs .vc small { display: block; font-size: 9.5px; font-weight: 700; line-height: 1.25; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vs .vc.top small { color: var(--ink); }
 .runres small { display: block; font-size: .62em; color: var(--paper); -webkit-text-stroke-width: 5px; white-space: nowrap; }
 .runres small.win { color: #7dffb5; }
 .runres b { display: block; font-weight: 400; color: var(--pop); white-space: nowrap; }
@@ -1005,6 +1018,31 @@ button, summary { font-family: var(--font-body); }
       crackle.connect(hf).connect(hg).connect(dest); crackle.start(t + 0.05);
     } catch (e) {}
   }
+  // おとなのハンデがへった時の不気味な音（約3.3秒）：うなる低音、心臓の鼓動、不協和音、雷
+  function sndOminous() {
+    const a = ac(); if (!a) return;
+    try {
+      const t = a.currentTime, dest = out(a);
+      const lp = a.createBiquadFilter(), dg = a.createGain();
+      lp.type = 'lowpass'; lp.frequency.setValueAtTime(140, t); lp.frequency.linearRampToValueAtTime(520, t + 2.4); lp.frequency.linearRampToValueAtTime(120, t + 3.3);
+      dg.gain.setValueAtTime(0.0001, t); dg.gain.linearRampToValueAtTime(0.55, t + 0.9); dg.gain.setValueAtTime(0.55, t + 2.5); dg.gain.exponentialRampToValueAtTime(0.001, t + 3.3);
+      [55, 58.3, 77.8, 110.4].forEach(f => {            // 少しずれた低い音を重ねて、うなりを作る（55と77.8は不安な響き）
+        const o = a.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
+        o.connect(lp); o.start(t); o.stop(t + 3.35);
+      });
+      lp.connect(dg).connect(dest);
+      [0.35, 0.62, 1.35, 1.62, 2.35, 2.62].forEach((at, i) => sweep(a, 'sine', 70, 38, t + at, 0.16, i % 2 ? 0.55 : 0.85, dest));   // 鼓動
+      [[1.05, 1.1, 0.9], [2.25, 1.0, 1.0]].forEach(([at, len, vol]) => {     // 雷
+        const th = noise(a, len, x => Math.pow(1 - x, 1.8) * (0.6 + 0.4 * Math.random()));
+        const f = a.createBiquadFilter(), g = a.createGain();
+        f.type = 'lowpass'; f.frequency.setValueAtTime(2200, t + at); f.frequency.exponentialRampToValueAtTime(120, t + at + len);
+        g.gain.value = vol;
+        th.connect(f).connect(g).connect(dest); th.start(t + at);
+      });
+      sweep(a, 'sawtooth', 220, 207, t + 1.05, 1.2, 0.12, dest);   // 高いところで きしむ音
+      sweep(a, 'sawtooth', 311, 293, t + 1.05, 1.2, 0.1, dest);
+    } catch (e) {}
+  }
   // パーフェクトのファンファーレ：駆け上がる4音と、最後の和音
   function sndFanfare() {
     const a = ac(); if (!a) return;
@@ -1501,6 +1539,7 @@ button, summary { font-family: var(--font-body); }
       if (r.best == null || run.total < r.best) { r.best = Math.round(run.total); res.newBest = true; }
       if (run.fast && !r.pass) { r.pass = true; res.pass = true; }
       res.best = r.best;
+      res.unlock = winOverAdults(run.a, run.total);     // 勝ったおとなのハンデがへる（へった時は、あとで知らせる）
     }
     save(); run = null;
     return res;
@@ -1510,11 +1549,51 @@ button, summary { font-family: var(--font-body); }
     const rv = res.rival; if (!rv || res.time == null) return '';
     const el = document.createElement('span'); el.textContent = rv.p.name;          // 名前はそのまま文字として入れる
     const name = el.innerHTML;
-    const mine = res.time + handicapOf(data);       // おとなが遊んでいる時は、自分にハンデが付く
-    const note = rv.hc || handicapOf(data) ? 'ハンデこみ ' : '';
-    return mine < rv.time
-      ? `<small class="win">${name}に勝った！（${note}${sec(rv.time)}秒）</small>`
-      : `<small>${name}まで あと${sec(mine - rv.time)}秒</small>`;
+    return res.time < rv.target
+      ? `<small class="win">${res.unlock ? 'おめでとう！ ' : ''}${name}に勝った！（${rv.hc ? 'ハンデこみ ' : ''}${sec(Math.max(0, rv.target))}秒）</small>`
+      : `<small>${name}まで あと${sec(res.time - rv.target)}秒</small>`;
+  }
+  /* ---------- おとなのハンデがへった時の知らせ ---------- */
+  // こどもがおとなに勝った直後に出す。暗転して、不気味な音とともに「パパの力が 解放された……！」
+  // ハンデ0で勝った時（crown）は、こわい演出ではなく、金色のお祝いにする。画面を押すと飛ばせる
+  const HC_WORDS = { 1500: 'の力が 解放された……！', 1000: 'の力が さらに解放された……！', 500: 'が 目をさました……！！', 0: 'が 本気を出した……！！！' };
+  function handicapScene(list, done) {
+    const esc = t => { const e = document.createElement('span'); e.textContent = t; return e.innerHTML; };
+    const crown = list.filter(x => x.crown), dark = list.filter(x => !x.crown);
+    const gold = !dark.length;
+    const who = (gold ? crown : dark).map(x => esc(x.name)).join('と');
+    const el = document.createElement('div');
+    el.className = 'hc-scene' + (gold ? ' gold' : '');
+    el.innerHTML = gold
+      ? `<div class="hc-box"><i>👑</i><b>ハンデなしで ${who}に勝った！</b><span>ほんとうの勝ち！</span></div>`
+      : `<div class="hc-box"><b>${who}${HC_WORDS[Math.min(...dark.map(x => x.to))]}</b>`
+        + dark.map(x => `<span>${esc(x.name)}のハンデ　+${sec(x.from)}秒 → ${x.to ? '+' + sec(x.to) + '秒' : 'なし'}</span>`).join('') + '</div>';
+    stage.appendChild(el);
+    const LEN = gold ? 3000 : 3600;
+    let over = false;
+    const end = () => {
+      if (over) return; over = true;
+      el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, fill: 'forwards' }).onfinish = () => { el.remove(); done(); };
+    };
+    el.addEventListener('pointerdown', end);
+    el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: gold ? 200 : 520, fill: 'forwards' });
+    const box = el.firstChild;
+    if (gold) {
+      sndFanfare(); confetti(REDUCED ? 14 : 60);
+      box.animate([{ transform: 'scale(.4)', opacity: 0 }, { transform: 'scale(1.12)', opacity: 1, offset: 0.25 }, { transform: 'scale(1)', opacity: 1 }], { duration: 520, easing: 'ease-out' });
+    } else {
+      sndOminous();
+      box.animate([{ opacity: 0, transform: 'scale(1.25)', filter: 'blur(6px)' }, { opacity: 0, transform: 'scale(1.25)', filter: 'blur(6px)', offset: 0.28 },
+        { opacity: 1, transform: 'scale(1)', filter: 'blur(0)', offset: 0.6 }, { opacity: 1, transform: 'scale(1)', filter: 'blur(0)' }], { duration: 2000, easing: 'ease-out', fill: 'both' });
+      if (!REDUCED) {
+        [1050, 1230, 2250].forEach(t => setTimeout(() => {          // 雷：白く光って揺れる
+          if (over) return;
+          el.animate([{ backgroundColor: 'rgba(255,255,255,.9)' }, { backgroundColor: 'rgba(8,0,2,.92)' }], { duration: 170 });
+          shake(1.2);
+        }, t));
+      }
+    }
+    setTimeout(end, LEN);
   }
   function showRunResult(res, ms) {
     const el = document.createElement('div');
@@ -1527,6 +1606,7 @@ button, summary { font-family: var(--font-body); }
       { opacity: 0, transform: 'scale(1.3)' }, { opacity: 1, transform: 'scale(1)', offset: 0.12 },
       { opacity: 1, transform: 'scale(1)', offset: 0.88 }, { opacity: 0, transform: 'scale(.96)' },
     ], { duration: ms, easing: 'ease-out' }).onfinish = () => el.remove();
+    if (res.unlock) { sndFanfare(); confetti(REDUCED ? 10 : 40); }      // おとなに勝った：まず明るくお祝い（このあと暗転）
     if (res.pass) { ping(); setTimeout(ping, 180); const r = stage.getBoundingClientRect(); bits({ x: r.width / 2, y: r.height * 0.46 }, 22); }
   }
 
@@ -1670,7 +1750,8 @@ button, summary { font-family: var(--font-body); }
     ], { duration: show, delay: FLY + 40, easing: 'ease-out' });   // 星になってから出す
     setTimeout(() => {
       if (g !== gen) return;               // 途中で交代していたら何もしない
-      afterEnemy();
+      if (res && res.unlock) handicapScene(res.unlock, () => { if (g === gen) afterEnemy(); });
+      else afterEnemy();
     }, FLY + 40 + show + rest);
   }
 
@@ -1681,7 +1762,7 @@ button, summary { font-family: var(--font-body); }
   const RECENT = 3;     // 判定に使う直近の回数
   const TOO_LONG = 30000; // これより長い回答は席を外したとみなして記録しない
   const ALL_DANS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0, lock: null, form: 'norm', holes: {}, seq: {}, adult: false });
+  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0, lock: null, form: 'norm', holes: {}, seq: {}, adult: false, hc: {} });
   function clean(p) {            // 保存データが壊れていても動くように整える
     if (!p || typeof p !== 'object') return null;
     const out = newProfile(String(p.name || 'プレイヤー').slice(0, 8));
@@ -1696,6 +1777,7 @@ button, summary { font-family: var(--font-body); }
     if (p.holes && typeof p.holes === 'object') out.holes = p.holes;
     if (p.seq && typeof p.seq === 'object') out.seq = p.seq;
     out.adult = p.adult === true;
+    if (p.hc && typeof p.hc === 'object') out.hc = p.hc;
     if (FORMS.some(f => f[0] === p.form)) out.form = p.form;
     if (Number.isInteger(p.worst) && p.worst >= 0) out.worst = p.worst;
     return out;
@@ -2106,28 +2188,63 @@ button, summary { font-family: var(--font-body); }
   let setFromWho = false;
   /* ---------- くらべる（みんなの成績） ---------- */
   const seqBest = (p, a, level = data.level) => { const r = ((p.seq || {})[level] || {})[a]; return r && r.best != null ? r.best : null; };
-  // おとなのハンデ：こどもとくらべる時、おとなのタイムに1問につき2秒を足す（記録そのものは変えない）
-  const ADULT_HANDICAP = 2000;
-  const handicapOf = p => p.adult && store.profiles.some(x => !x.adult) ? ADULT_HANDICAP * nums().length : 0;
-  const effBest = (p, a) => { const t = seqBest(p, a); return t == null ? null : t + handicapOf(p); };
-  // じゅんばんのベストタイムで、いま遊んでいる人のライバルになる人（ほかの人のうち、いちばん速い人）
+  // おとなのハンデ：こどもとくらべる時、おとなのタイムに「1問につき何秒」を足す（記録そのものは変えない）。
+  // 最初は2秒。こどもがその段でおとなに勝つたびに0.5秒ずつ減り、0で勝つと「ハンデなしで勝った」になる。
+  // 進み具合は、こどもの側に「相手のおとな・モード・段」ごとに持つ（hc[おとなのid][モード][段] = 勝った回数）
+  const ADULT_HANDICAP = 2000, HC_STEP = 500, HC_STEPS = ADULT_HANDICAP / HC_STEP;
+  function hcSteps(child, adult, a, level = data.level) { return ((((child.hc || {})[adult.id] || {})[level] || {})[a]) || 0; }
+  const hcPerQ = (child, adult, a) => Math.max(0, ADULT_HANDICAP - HC_STEP * hcSteps(child, adult, a));   // 1問あたり（ミリ秒）
+  // x のタイムを y とくらべる時に、x に足すハンデ（ミリ秒）。x がおとなで y がこどもの時だけ付く
+  const pairHc = (x, y, a) => x.adult && !y.adult ? hcPerQ(y, x, a) * nums().length : 0;
+  // いま遊んでいる人のライバル：ほかの人のうち、いちばん手ごわい人。target は「これより速ければ勝ち」になるタイム
   function rivalFor(a) {
     let best = null;
-    store.profiles.forEach(p => { if (p === data) return; const t = effBest(p, a); if (t != null && (!best || t < best.time)) best = { p, time: t, hc: handicapOf(p) }; });
+    store.profiles.forEach(p => {
+      if (p === data) return;
+      const t = seqBest(p, a); if (t == null) return;
+      const target = t + pairHc(p, data, a) - pairHc(data, p, a);
+      if (!best || target < best.target) best = { p, target, hc: pairHc(p, data, a) + pairHc(data, p, a) };
+    });
     return best;
+  }
+  // こどもが段を全問正解した時：勝ったおとなのハンデを1段階へらす。へった内容を返す（なければ null）
+  function winOverAdults(a, time) {
+    if (data.adult) return null;
+    const list = [];
+    store.profiles.forEach(p => {
+      if (!p.adult) return;
+      const t = seqBest(p, a); if (t == null) return;
+      const st = hcSteps(data, p, a);
+      if (time >= t + pairHc(p, data, a) || st > HC_STEPS) return;          // 負け、または、もうハンデなしで勝っている
+      const lv = ((data.hc[p.id] || (data.hc[p.id] = {}))[data.level]) || (data.hc[p.id][data.level] = {});
+      lv[a] = st + 1;
+      list.push({ name: p.name, from: Math.max(0, ADULT_HANDICAP - HC_STEP * st), to: Math.max(0, ADULT_HANDICAP - HC_STEP * (st + 1)), crown: st === HC_STEPS });
+    });
+    return list.length ? list : null;
   }
   function renderVs() {
     const P = store.profiles, N = nums(), box = $('vs');
+    // ハンデは「どのこどもとくらべるか」で決まる。こどもが見ている時は自分、おとなが見ている時は最初のこども
+    const kid = data.adult ? P.find(p => !p.adult) : data;
+    const hcOf = (p, a) => p.adult && kid ? hcPerQ(kid, p, a) : 0;
+    const eff = (p, a) => { const t = seqBest(p, a); return t == null ? null : t + hcOf(p, a) * N.length; };
     box.textContent = '';
     box.style.gridTemplateColumns = `auto repeat(${P.length}, minmax(0, 1fr))`;
     const add = (cls, text) => { const d = document.createElement('div'); d.className = cls; d.textContent = text; box.appendChild(d); return d; };
     add('vl', '');
     P.forEach(p => { const h = add('vh' + (p === data ? ' me' : ''), p.name); if (p.adult) { const t = document.createElement('span'); t.className = 'tag'; t.textContent = 'おとな'; h.append(document.createElement('br'), t); } });
-    // 段ごとのベストタイム。いちばん速い人に色を付ける
+    // 段ごとのベストタイム。いちばん速い人に色を付ける。おとなには、いまのハンデ（1問あたり）も出す
     N.forEach(a => {
       add('vl', a + 'の段');
-      const ts = P.map(p => effBest(p, a)), top = Math.min(...ts.filter(t => t != null));
-      ts.forEach(t => add('vc' + (t != null && t === top ? ' top' : ''), t != null ? sec(t) : '—'));
+      const ts = P.map(p => eff(p, a)), top = Math.min(...ts.filter(t => t != null));
+      P.forEach((p, i) => {
+        const c = add('vc' + (ts[i] != null && ts[i] === top ? ' top' : ''), ts[i] != null ? sec(ts[i]) : '—');
+        if (p.adult && kid) {
+          const st = hcSteps(kid, p, a), n = document.createElement('small');
+          n.textContent = st > HC_STEPS ? '👑 ハンデなしで勝ち' : hcOf(p, a) ? 'ハンデ +' + sec(hcOf(p, a)) : 'ハンデなし';
+          c.appendChild(n);
+        }
+      });
     });
     add('sep', '');
     // まとめ：数が多い（ワーストは少ない）人に色を付ける
@@ -2148,18 +2265,19 @@ button, summary { font-family: var(--font-body); }
     else {
       let win = 0, played = 0;
       N.forEach(a => {
-        const mine = effBest(data, a), theirs = others.map(p => effBest(p, a)).filter(t => t != null);
-        if (mine == null || !theirs.length) return;
+        const mine = seqBest(data, a); if (mine == null) return;
+        const margins = others.map(p => { const t = seqBest(p, a); return t == null ? null : (mine + pairHc(data, p, a)) - (t + pairHc(p, data, a)); }).filter(m => m != null);
+        if (!margins.length) return;
         played++;
-        if (data.adult ? mine > Math.min(...theirs) : mine < Math.min(...theirs)) win++;
+        if (data.adult ? Math.max(...margins) > 0 : Math.max(...margins) < 0) win++;   // こども：全員に勝っている／おとな：だれかに負けている
       });
       head.innerHTML = data.adult
         ? `こどもに負けている段：<b>${win}</b> / ${played}`
         : `おとなに勝っている段：<b>${win}</b> / ${played}` + (played && win === played ? '　ぜんぶ勝ち！' : '');
     }
-    const hc = P.some(p => p.adult) && P.some(p => !p.adult) ? ADULT_HANDICAP * N.length / 1000 : 0;
+    const mixed = P.some(p => p.adult) && kid;
     $('vsHint').textContent = '上の数字は、じゅんばんタイプでその段を全問正解したときのベストタイム（秒）です。黄色がいちばん速い人。'
-      + (hc ? `おとなはハンデとして、1問につき${ADULT_HANDICAP / 1000}秒（1つの段で${hc}秒）を足した数字です。` : '')
+      + (mixed ? `おとなの数字は、ハンデ（1問につき最初は${ADULT_HANDICAP / 1000}秒）を足したものです。${kid.name}がその段でおとなに勝つたびに、ハンデが${HC_STEP / 1000}秒ずつへります。` : '')
       + (data.level ? `いまは「${LEVELS[data.level].name}」の成績をくらべています。` : '');
   }
 
@@ -2225,7 +2343,7 @@ button, summary { font-family: var(--font-body); }
       return;
     }
     clearTimeout(resetArmed); resetArmed = 0; btn.textContent = '記録を消す';
-    data.cells = {}; data.holes = {}; data.seq = {}; data.worst = null; selected = null; save(); renderRecords(); renderWorst(); renderSettings();
+    data.cells = {}; data.holes = {}; data.seq = {}; data.hc = {}; data.worst = null; selected = null; save(); renderRecords(); renderWorst(); renderSettings();
     $('detail').textContent = '記録を消しました。ワースト記録も消えました。';
   });
 
