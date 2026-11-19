@@ -135,6 +135,21 @@ button, summary { font-family: var(--font-body); }
   font-size: 18px;
   text-shadow: 2px 2px 0 var(--ink);
 }
+/* おんどく（暗唱テスト）：数字ボタンのかわりに「言えた！」「まちがえた」 */
+.readbar { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: 8px; }
+.readbar[hidden] { display: none; }
+.readbar .btn { font-family: var(--font-display); font-weight: 400; touch-action: none; -webkit-user-select: none; user-select: none; }
+#readOk { font-size: clamp(22px, 7vh, 34px); padding: 10px 0; background: var(--pop); }
+#readNg { font-size: 13px; font-family: var(--font-body); font-weight: 700; }
+.readbar .btn.down { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+.question .yomi { display: block; font-family: var(--font-body); font-weight: 700; font-size: .38em; line-height: 1.3; color: var(--muted); letter-spacing: .06em; }
+.question .dots { letter-spacing: .12em; color: #b9bbcc; }
+.question .dots b { color: var(--ink); font-weight: 400; }
+.read-table { display: grid; grid-template-columns: auto repeat(3, minmax(0, 1fr)); gap: 4px 6px; align-items: center; font-size: 13px; }
+.read-table .vh { font-weight: 700; text-align: center; }
+.read-table .vl { font-family: var(--font-display); color: var(--muted); }
+.read-table .vc { text-align: center; padding: 6px 2px; border: 2px solid #d9d6c8; border-radius: 6px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--muted); background: #fff; }
+.read-table .vc.pass { border-color: var(--ink); background: var(--pop); color: var(--ink); }
 .rival-info { font-size: 13px; font-weight: 700; color: var(--pop); text-shadow: 1.5px 1.5px 0 var(--ink); }
 .rival-info:empty { display: none; }
 .inbox-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
@@ -351,6 +366,7 @@ button, summary { font-family: var(--font-body); }
 .judge.think b { color: var(--think-text); }
 .judge.miss b { color: var(--hit); }
 
+.keypad[hidden] { display: none; }
 .keypad { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; touch-action: none; }   /* 指が少しすべっても、スクロールや拡大に取られないように */
 .keypad .btn {
   font-family: var(--font-display); font-weight: 400; font-size: 22px; padding: 8px 0;
@@ -457,6 +473,7 @@ button, summary { font-family: var(--font-body); }
   }
   .keypad .btn { font-size: clamp(22px, 7vh, 34px); padding: 0; height: clamp(52px, 13vh, 92px); }
   .keypad .btn:nth-child(6) { grid-column: 7; }   /* 5と6の間を空けて左右の手を分ける */
+  #readOk { padding: 0; height: clamp(52px, 13vh, 92px); }
 }
 /* 高さが足りない横持ちスマホ：式を中央、判定はその右に置いて1行ぶんに収める */
 @media (orientation: landscape) and (max-height: 520px) {
@@ -667,6 +684,10 @@ button, summary { font-family: var(--font-body); }
     <div class="judge" id="judge">数字キーか下のボタンで答えよう。速く答えるほど強いパンチ！</div>
   </section>
   <div class="keypad" id="keypad" aria-label="数字ボタン"></div>
+  <div class="readbar" id="readBar" hidden>
+    <button class="btn" id="readOk" type="button">言えた！</button>
+    <button class="btn" id="readNg" type="button">まちがえた</button>
+  </div>
   </div>
 
 </main>
@@ -683,6 +704,11 @@ button, summary { font-family: var(--font-body); }
     <section class="records" id="tabPlay">
       <p class="play-sum" id="playSum"></p>
       <div class="setting">
+        <h3>あそびかた</h3>
+        <div class="choice" id="plays"></div>
+        <p class="hint" id="playHint"></p>
+      </div>
+      <div class="setting">
         <h3 class="step"><i>1</i>どの段を</h3>
         <div class="dans" id="dans"></div>
         <div class="mini">
@@ -690,6 +716,7 @@ button, summary { font-family: var(--font-body); }
           <button class="btn" id="dansNone" type="button">ぜんぶはずす</button>
         </div>
       </div>
+      <div id="tapSettings">
       <div class="setting">
         <h3 class="step"><i>2</i>どの順で</h3>
         <div class="choice" id="types"></div>
@@ -704,6 +731,24 @@ button, summary { font-family: var(--font-body); }
         <h3 class="step"><i>4</i>むずかしさ</h3>
         <div class="choice" id="levels"></div>
         <p class="hint" id="levelHint"></p>
+      </div>
+      </div>
+      <div id="readSettings" hidden>
+        <div class="setting">
+          <h3 class="step"><i>2</i>となえる順</h3>
+          <div class="choice" id="readOrders"></div>
+          <p class="hint" id="readOrderHint"></p>
+        </div>
+        <div class="setting">
+          <h3 class="step"><i>3</i>画面に出すもの</h3>
+          <div class="choice" id="readHints"></div>
+          <p class="hint" id="readHintHint"></p>
+        </div>
+        <div class="setting">
+          <label class="step" for="readSec"><i>4</i>合格タイム：1つの段を <span id="readSecVal"></span>秒 以内</label>
+          <input id="readSec" type="range" min="8" max="40" step="1">
+          <p class="hint">まちがえずに、この秒数より速くとなえ終わると「合格」になります。学校のテストの目標に合わせてください。</p>
+        </div>
       </div>
     </section>
 
@@ -879,6 +924,33 @@ button, summary { font-family: var(--font-body); }
     ['mix',  'まぜる', 'ふつうと穴あきを、まぜて出します。'],
   ];
   // 敵の一覧に書ける攻撃の指定：atkWords＝当たった時の文字（書かなければパンチの文字）、atk: 'fire'＝炎の音と、炎が画面をおおう演出
+  // 九九のとなえ方（[式の読み, 答えの読み]）。おんどく（暗唱テスト）で使う
+  const YOMI = {
+    1: [['いんいちが', 'いち'], ['いんにが', 'に'], ['いんさんが', 'さん'], ['いんしが', 'し'], ['いんごが', 'ご'], ['いんろくが', 'ろく'], ['いんしちが', 'しち'], ['いんはちが', 'はち'], ['いんくが', 'く']],
+    2: [['にいちが', 'に'], ['ににんが', 'し'], ['にさんが', 'ろく'], ['にしが', 'はち'], ['にご', 'じゅう'], ['にろく', 'じゅうに'], ['にしち', 'じゅうし'], ['にはち', 'じゅうろく'], ['にく', 'じゅうはち']],
+    3: [['さんいちが', 'さん'], ['さんにが', 'ろく'], ['さざんが', 'く'], ['さんし', 'じゅうに'], ['さんご', 'じゅうご'], ['さぶろく', 'じゅうはち'], ['さんしち', 'にじゅういち'], ['さんぱ', 'にじゅうし'], ['さんく', 'にじゅうしち']],
+    4: [['しいちが', 'し'], ['しにが', 'はち'], ['しさん', 'じゅうに'], ['しし', 'じゅうろく'], ['しご', 'にじゅう'], ['しろく', 'にじゅうし'], ['ししち', 'にじゅうはち'], ['しは', 'さんじゅうに'], ['しく', 'さんじゅうろく']],
+    5: [['ごいちが', 'ご'], ['ごに', 'じゅう'], ['ごさん', 'じゅうご'], ['ごし', 'にじゅう'], ['ごご', 'にじゅうご'], ['ごろく', 'さんじゅう'], ['ごしち', 'さんじゅうご'], ['ごは', 'しじゅう'], ['ごっく', 'しじゅうご']],
+    6: [['ろくいちが', 'ろく'], ['ろくに', 'じゅうに'], ['ろくさん', 'じゅうはち'], ['ろくし', 'にじゅうし'], ['ろくご', 'さんじゅう'], ['ろくろく', 'さんじゅうろく'], ['ろくしち', 'しじゅうに'], ['ろくは', 'しじゅうはち'], ['ろっく', 'ごじゅうし']],
+    7: [['しちいちが', 'しち'], ['しちに', 'じゅうし'], ['しちさん', 'にじゅういち'], ['しちし', 'にじゅうはち'], ['しちご', 'さんじゅうご'], ['しちろく', 'しじゅうに'], ['しちしち', 'しじゅうく'], ['しちは', 'ごじゅうろく'], ['しちく', 'ろくじゅうさん']],
+    8: [['はちいちが', 'はち'], ['はちに', 'じゅうろく'], ['はちさん', 'にじゅうし'], ['はちし', 'さんじゅうに'], ['はちご', 'しじゅう'], ['はちろく', 'しじゅうはち'], ['はちしち', 'ごじゅうろく'], ['はっぱ', 'ろくじゅうし'], ['はっく', 'しちじゅうに']],
+    9: [['くいちが', 'く'], ['くに', 'じゅうはち'], ['くさん', 'にじゅうしち'], ['くし', 'さんじゅうろく'], ['くご', 'しじゅうご'], ['くろく', 'ごじゅうし'], ['くしち', 'ろくじゅうさん'], ['くは', 'しちじゅうに'], ['くく', 'はちじゅういち']],
+  };
+  const yomi = (a, b) => YOMI[a][b - 1].join(' ');
+  const PLAYS = [
+    ['tap',  'こたえを打つ', '数字のボタンで答えを打って、敵をたおします。'],
+    ['read', 'おんどく',     '声に出して九九をとなえる、暗唱テストの練習です。1つ言うたびに「言えた！」を押します。押すと正しい読み方が出るので、合っていたか自分やおうちの人がたしかめます。'],
+  ];
+  const READ_ORDERS = [
+    ['up',   '上がり',   '×1 から ×9 へ、順番にとなえます。'],
+    ['down', '下がり',   '×9 から ×1 へ、逆からとなえます。'],
+    ['mix',  'ばらばら', 'ばらばらの順番でとなえます。'],
+  ];
+  const READ_HINTS = [
+    ['full', '式とよみがな', '「3 × 4」と「さんし…」を出します。読み方をおぼえる時に。'],
+    ['expr', '式だけ',       '「3 × 4」だけを出します。'],
+    ['none', 'なにも出さない', '何番目かだけを出します。上がり・下がりのテスト本番の練習に。'],
+  ];
   const SFX_JAB = ['ペシ', 'パシ', 'ポコ', 'ビシ'];
   const SFX_HEAVY = ['ドカッ', 'バキッ', 'ボコッ', 'ズドン'];
 
@@ -886,6 +958,7 @@ button, summary { font-family: var(--font-body); }
   let combo = 0, kos = 0, locked = false, dir = 1;
   let stateTimer = 0;
   let queue = [], qi = 0, bag = [];   // いまの敵が出す問題と、その何問目か
+  let readRun = null;                  // おんどくで1つの段をとなえている間の成績
   let run = null, runResult = null;   // じゅんばんで1つの段を通している間の成績と、その結果
   let punched = 0;      // このサイクルでなぐられた回数（＝まちがえた回数）
   let flawless = true;  // いまの敵に、ここまで全問「速く正解」しているか
@@ -1131,9 +1204,11 @@ button, summary { font-family: var(--font-body); }
     const e = ENEMIES[enemyIdx % ENEMIES.length];
     queue = buildQueue(); qi = 0;
     // じゅんばん（ふつうの形）は答えが予想できるので、九九の表には記録せず、段ごとの成績として数える
-    run = data.type === 'seq' && data.form === 'norm' ? { a: queue[0].a, total: 0, miss: 0, fast: true, valid: true } : null;
+    run = data.play !== 'read' && data.type === 'seq' && data.form === 'norm' ? { a: queue[0].a, total: 0, miss: 0, fast: true, valid: true } : null;
+    readRun = data.play === 'read' ? { a: queue[0].a, total: 0, miss: 0, valid: true } : null;   // おんどくの成績
     runResult = null; flawless = true;
-    $('enemyName').textContent = e.name + (data.type === 'seq' ? '（' + queue[0].a + 'の段）' : '');
+    $('enemyName').textContent = e.name + (data.play === 'read' || data.type === 'seq' ? '（' + queue[0].a + 'の段）' : '');
+    $('keypad').hidden = data.play === 'read'; $('readBar').hidden = data.play !== 'read';
     loadRival();                                      // じゅんばんの時は、ぬかすべき相手のタイムを見せる
     $('shirt').setAttribute('fill', e.shirt);
     $('hair').setAttribute('fill', e.hair);
@@ -1475,7 +1550,7 @@ button, summary { font-family: var(--font-body); }
       : before == null ? 'はじめての記録です。'
       : isWorst ? 'ワースト記録をこうしん…（前は' + before + '回）'
       : 'ワースト（' + before + '回）より' + (before - n) + '回すくない！';
-    $('cyclePerfect').textContent = perfects ? `パーフェクト ${perfects}／${data.dans.length}体` : '';
+    $('cyclePerfect').textContent = perfects ? `パーフェクト ${perfects}／${cycleLen()}体` : '';
     renderWorst();
     paused = true;
     $('cycle').hidden = false;
@@ -1529,7 +1604,7 @@ button, summary { font-family: var(--font-body); }
   function afterEnemy() {
     enemyWrap.getAnimations().forEach(a => a.cancel());
     enemyIdx++;
-    if (enemyIdx % data.dans.length === 0) showCycle();   // ひとまわりしたら結果を見せる
+    if (enemyIdx % cycleLen() === 0) showCycle();   // ひとまわりしたら結果を見せる
     else spawnEnemy();
   }
   // 名前えらびの画面へ。そこで設定を見直してから、名前を押すと最初の敵から始まる
@@ -1546,7 +1621,24 @@ button, summary { font-family: var(--font-body); }
     return t[a] || (t[a] = { pass: false, best: null, n: 0 });
   }
   // 段を最後まで答えた時に呼ぶ。全問正解ならタイムを残し、全問が暗記の速さなら合格にする
+  // おんどくで段をとなえ終えた時。まちがいなしならタイムを残し、合格タイムより速ければ合格にする
+  function finishRead() {
+    const rr = readRun; readRun = null;
+    const t = data.read[data.readOrder] || (data.read[data.readOrder] = {});
+    const r = t[rr.a] || (t[rr.a] = { pass: false, best: null, n: 0 });
+    const res = { read: true, a: rr.a, miss: rr.miss, time: null, best: r.best, newBest: false, pass: false, goal: data.readSec };
+    r.n++;
+    if (!rr.miss && rr.valid) {
+      res.time = rr.total;
+      if (r.best == null || rr.total < r.best) { r.best = Math.round(rr.total); res.newBest = true; }
+      if (rr.total <= data.readSec * 1000) { res.pass = true; r.pass = true; }
+      res.best = r.best;
+    }
+    save();
+    return res;
+  }
   function finishRun() {
+    if (readRun) return finishRead();
     if (!run) return null;
     const r = seqRec(run.a), res = { a: run.a, miss: run.miss, time: null, best: r.best, newBest: false, pass: false, rival: rivalFor(run.a) };
     r.n++;
@@ -1616,7 +1708,11 @@ button, summary { font-family: var(--font-body); }
   function showRunResult(res, ms) {
     const el = document.createElement('div');
     el.className = 'runres';
-    el.innerHTML = res.time == null
+    el.innerHTML = res.read ? (res.time == null
+        ? `${res.a}の段 おんどく<br>${res.miss ? 'まちがい ' + res.miss + '回' : 'タイムなし'}`
+        : `${res.a}の段 おんどく　${sec(res.time)}秒<b>${res.pass ? '合格！' : 'あと' + sec(res.time - res.goal * 1000) + '秒で合格'}</b>`
+          + (res.newBest ? '<small class="win">ベストこうしん！</small>' : `<small>ベスト ${sec(res.best)}秒</small>`))
+      : res.time == null
       ? `${res.a}の段<br>${res.miss ? 'まちがい ' + res.miss + '回' : 'タイムなし'}`
       : `${res.a}の段　${sec(res.time)}秒<b>${res.pass ? 'じゅんばん合格！' : res.newBest ? 'ベストこうしん！' : 'ベスト ' + sec(res.best) + '秒'}</b>` + rivalLine(res);
     fx.appendChild(el);
@@ -1780,7 +1876,8 @@ button, summary { font-family: var(--font-body); }
   const RECENT = 3;     // 判定に使う直近の回数
   const TOO_LONG = 30000; // これより長い回答は席を外したとみなして記録しない
   const ALL_DANS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0, lock: null, form: 'norm', holes: {}, seq: {}, adult: false, hc: {}, inbox: [] });
+  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0, lock: null, form: 'norm', holes: {}, seq: {}, adult: false, hc: {}, inbox: [],
+    play: 'tap', readOrder: 'up', readHint: 'full', readSec: 20, read: {} });
   function clean(p) {            // 保存データが壊れていても動くように整える
     if (!p || typeof p !== 'object') return null;
     const out = newProfile(String(p.name || 'プレイヤー').slice(0, 8));
@@ -1795,6 +1892,11 @@ button, summary { font-family: var(--font-body); }
     if (p.holes && typeof p.holes === 'object') out.holes = p.holes;
     if (p.seq && typeof p.seq === 'object') out.seq = p.seq;
     out.adult = p.adult === true;
+    if (p.play === 'read') out.play = 'read';
+    if (READ_ORDERS.some(o => o[0] === p.readOrder)) out.readOrder = p.readOrder;
+    if (READ_HINTS.some(h => h[0] === p.readHint)) out.readHint = p.readHint;
+    if (p.readSec >= 8 && p.readSec <= 40) out.readSec = Math.round(p.readSec);
+    if (p.read && typeof p.read === 'object') out.read = p.read;
     if (p.hc && typeof p.hc === 'object') out.hc = p.hc;
     if (Array.isArray(p.inbox)) out.inbox = p.inbox.filter(m => m && typeof m.from === 'string' && Number.isFinite(m.a) && ['win', 'lose', 'new'].includes(m.kind)).slice(-20);
     if (FORMS.some(f => f[0] === p.form)) out.form = p.form;
@@ -1844,6 +1946,7 @@ button, summary { font-family: var(--font-body); }
   const LABEL = { memo: '暗記', think: '考えてる', miss: 'まちがえた', none: 'まだ' };
 
   let selRow = null;                      // 記録の画面で、段のメダルを押して選んでいる段
+  let recRead = false;                    // 記録の画面で、おんどくの表を見ているか
   let selected = null, recHole = false;   // recHole：記録の画面で穴あきの表を見ているか
   function renderRecords() {
     const count = { memo: 0, think: 0, miss: 0, none: 0 }, weak = [];
@@ -1852,13 +1955,27 @@ button, summary { font-family: var(--font-body); }
       ? '穴あき問題の記録です。金メダルは、その段のマスがぜんぶ「暗記」になると付きます。'
       : 'ランダムと弱点で出た問題の記録です。左のメダルは、銀の輪が「じゅんばん合格」、金が「その段をぜんぶ暗記」。右の数字は、じゅんばんで全問正解したときのベストタイム（秒）です。メダルを押すと、くわしく見られます。';
     const tabs = $('recTabs'); tabs.textContent = '';
-    [[false, 'ふつう（3×4=□）'], [true, '穴あき（3×□=12）']].forEach(([h, label]) => {
+    [[false, false, 'ふつう（3×4=□）'], [true, false, '穴あき（3×□=12）'], [false, true, 'おんどく']].forEach(([h, rd, label]) => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'btn'; b.textContent = label;
-      b.setAttribute('aria-pressed', String(H === h));
-      b.addEventListener('click', () => { recHole = h; selected = null; selRow = null; renderRecords(); });
+      b.setAttribute('aria-pressed', String(recRead ? rd : !rd && H === h));
+      b.addEventListener('click', () => { recHole = h; recRead = rd; selected = null; selRow = null; renderRecords(); });
       tabs.appendChild(b);
     });
+    ['legend', 'detail'].forEach(id => { $(id).hidden = recRead; });
+    $('weak').parentNode.hidden = recRead;
+    if (recRead) {                              // おんどくの成績：段 × となえる順のベストタイム。合格は黄色
+      const g = $('kuku'); g.textContent = ''; g.className = 'read-table'; g.style.gridTemplateColumns = '';
+      const add = (cls, t) => { const d = document.createElement('div'); d.className = cls; d.textContent = t; g.appendChild(d); };
+      add('vl', ''); READ_ORDERS.forEach(o => add('vh', o[1]));
+      R(1, 9).forEach(a => {
+        add('vl', a + 'の段');
+        READ_ORDERS.forEach(([k]) => { const r = (data.read[k] || {})[a] || {}; add('vc' + (r.pass ? ' pass' : ''), r.best != null ? sec(r.best) + '秒' : '—'); });
+      });
+      $('recHint').textContent = `おんどくで、まちがえずにとなえ終えた時のベストタイムです。合格タイム（いまは${data.readSec}秒）より速くとなえた段は黄色になります。`;
+      return;
+    }
+    $('kuku').className = 'kuku';
     const grid = $('kuku'); grid.textContent = '';
     grid.style.gridTemplateColumns = `repeat(${N.length + 1}, minmax(0, 1fr))` + (H ? '' : ' minmax(0, 1.25fr)');
     grid.classList.toggle('wide', N.length > 9);        // マスが多い時は色だけにして、数字は押して見る
@@ -1915,7 +2032,16 @@ button, summary { font-family: var(--font-body); }
   const WEIGHT = { none: 3, miss: 6, think: 4, memo: 1 };   // にがてなマスほど出やすい
   const nums = () => LEVELS[data.level].nums;
   // 敵ひとりぶんの問題を作る。数は「かける数」の個数（ふつう9／上級者14／地獄18）
+  // おんどくで使う段：1〜9だけ
+  const readDans = () => { const d = data.dans.filter(n => n <= 9).sort((x, y) => x - y); return d.length ? d : R(1, 9); };
+  const cycleLen = () => data.play === 'read' ? readDans().length : data.dans.length;   // 1サイクルの敵の数
   function buildQueue() {
+    if (data.play === 'read') {                 // おんどく：1つの段を、えらんだ順でとなえる
+      const d = readDans(), a = d[enemyIdx % d.length];
+      const bs = data.readOrder === 'down' ? R(1, 9).reverse() : R(1, 9);
+      if (data.readOrder === 'mix') for (let i = bs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [bs[i], bs[j]] = [bs[j], bs[i]]; }
+      return bs.map(b => ({ a, b, read: true }));
+    }
     const N = nums(), dans = data.dans.slice().sort((x, y) => x - y);
     const isHole = () => data.form === 'hole' || (data.form === 'mix' && Math.random() < 0.5);
     const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
@@ -1953,6 +2079,13 @@ button, summary { font-family: var(--font-body); }
   }
   function renderQuestion(reveal) {
     $('question').classList.toggle('reveal', !!reveal);
+    if (q.read) {                               // おんどく：設定に合わせて、式・よみがな・何番目かを出す
+      const h = data.readHint, at = qi, n = queue.length;
+      const dots = `<span class="dots">${'<b>●</b>'.repeat(at)}${'○'.repeat(n - at)}</span>`;
+      $('question').innerHTML = h === 'none' ? dots
+        : `${q.a} × ${q.b}` + (h === 'full' ? `<span class="yomi">${YOMI[q.a][q.b - 1][0]}…</span>` : '');
+      return;
+    }
     const slot = `<span class="typed">${typed}</span>` + (reveal ? '' : '<span class="caret">?</span>');
     $('question').innerHTML = q.hole
       ? `${q.a} × <span class="box">${slot}</span> = ${q.a * q.b}`
@@ -1969,8 +2102,37 @@ button, summary { font-family: var(--font-body); }
     if (qi < queue.length) nextQuestion(); else { locked = true; hit(true); }
   }
 
+  // おんどく：1つとなえるたびに「言えた！」、言いまちがえたら「まちがえた」。押すと正しい読み方を出す
+  function handleRead(ok) {
+    if (locked || paused || !q.read || performance.now() < qGuard) return;
+    ac();
+    const ms = performance.now() - qStart;
+    if (!(qValid && ms < TOO_LONG)) readRun.valid = false;
+    const said = `${yomi(q.a, q.b)}（${q.a}×${q.b}=${q.a * q.b}）`;
+    if (!ok) {
+      readRun.miss++; flawless = false;
+      combo = 0; punched++; renderStats(false); blip(); punchPlayer();
+      judge('miss', 'ただしくは', said);
+      locked = true;
+      const g = gen;
+      setTimeout(() => { if (g !== gen) return; locked = false; advance(); }, 800);
+      return;
+    }
+    readRun.total += ms;
+    const fast = ms < data.th;
+    if (!fast) flawless = false;
+    judge(fast ? 'memo' : 'think', fast ? 'はやい！' : 'いいね', said);
+    combo++; renderStats(true);
+    const ko = hit(fast);
+    if (ko) locked = true; else advance();
+  }
+  [['readOk', true], ['readNg', false]].forEach(([id, ok]) => {
+    const b = $(id);
+    b.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button !== 0) return; e.preventDefault(); flashKey(b); handleRead(ok); });
+    b.addEventListener('click', e => { if (e.detail === 0) handleRead(ok); });
+  });
   function handleDigit(d) {
-    if (locked || paused || performance.now() < qGuard) return;
+    if (locked || paused || q.read || performance.now() < qGuard) return;
     ac();
     const ans = String(q.hole ? q.b : q.a * q.b);
     const ms = performance.now() - qStart;
@@ -2015,6 +2177,7 @@ button, summary { font-family: var(--font-body); }
       return;
     }
     if (paused || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (q.read && (e.key === ' ' || e.key === 'Enter') && !e.repeat && (!e.target || e.target.tagName !== 'BUTTON')) { e.preventDefault(); handleRead(true); return; }
     if (/^[0-9]$/.test(e.key)) {
       if (e.repeat) return;                        // 押しっぱなしの連続入力は受けない
       if (e.target && e.target.type === 'range') return;
@@ -2080,7 +2243,30 @@ button, summary { font-family: var(--font-body); }
       b.addEventListener('click', fn);
       box.appendChild(b);
     };
-    $('playSum').innerHTML = `いまの設定：${summary(data)}<br>→ <b>敵${data.dans.length}人・${data.dans.length * nums().length}問</b>で1サイクル`;
+    const reading = data.play === 'read';
+    $('playSum').innerHTML = `いまの設定：${summary(data)}<br>→ ` + (reading
+      ? `<b>敵${cycleLen()}人</b>（1人につき1つの段をとなえる）で1サイクル`
+      : `<b>敵${data.dans.length}人・${data.dans.length * nums().length}問</b>で1サイクル`);
+    const plays = $('plays'); plays.textContent = '';
+    PLAYS.forEach(([k, label]) => pick(plays, label, data.play === k, () => {
+      if (data.play === k) return;
+      data.play = k; dirty = true; save(); renderSettings();
+    }));
+    $('playHint').textContent = PLAYS.find(x => x[0] === data.play)[2];
+    $('tapSettings').hidden = reading; $('readSettings').hidden = !reading;
+    const ro = $('readOrders'); ro.textContent = '';
+    READ_ORDERS.forEach(([k, label]) => pick(ro, label, data.readOrder === k, () => {
+      if (data.readOrder === k) return;
+      data.readOrder = k; dirty = true; save(); renderSettings();
+    }));
+    $('readOrderHint').textContent = READ_ORDERS.find(x => x[0] === data.readOrder)[2];
+    const rh = $('readHints'); rh.textContent = '';
+    READ_HINTS.forEach(([k, label]) => pick(rh, label, data.readHint === k, () => {
+      if (data.readHint === k) return;
+      data.readHint = k; dirty = true; save(); renderSettings();
+    }));
+    $('readHintHint').textContent = READ_HINTS.find(x => x[0] === data.readHint)[2];
+    $('readSec').value = data.readSec; $('readSecVal').textContent = data.readSec;
     const forms = $('forms'); forms.textContent = '';
     FORMS.forEach(([k, label]) => pick(forms, label, data.form === k, () => {
       if (data.form === k) return;
@@ -2113,7 +2299,7 @@ button, summary { font-family: var(--font-body); }
     $('levelHint').textContent = hint;
 
     const box = $('dans'); box.textContent = '';
-    nums().forEach(a => {
+    (reading ? R(1, 9) : nums()).forEach(a => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'btn'; b.textContent = a;
       b.setAttribute('aria-label', a + 'の段');
@@ -2136,6 +2322,7 @@ button, summary { font-family: var(--font-body); }
     $('lockBtn').setAttribute('aria-pressed', String(!!data.lock));
     $('lockBtn').textContent = data.lock ? 'ロック：ON（押すと解除）' : 'ロック：OFF';
   }
+  $('readSec').addEventListener('input', e => { data.readSec = Number(e.target.value); save(); $('readSecVal').textContent = data.readSec; renderRecords(); });
   $('dansAll').addEventListener('click', () => { data.dans = nums().slice(); dirty = true; save(); renderSettings(); });
   $('dansNone').addEventListener('click', () => { data.dans = [Math.min(...data.dans)]; dirty = true; save(); renderSettings(); });   // 1つは残す
   $('th').addEventListener('input', e => { data.th = Number(e.target.value) * 1000; save(); renderRecords(); renderSettings(); });
@@ -2379,6 +2566,7 @@ button, summary { font-family: var(--font-body); }
     setFromWho = !!fromWho;
     dirty = false; selected = null; selRow = null; pinOk = false;
     recHole = data.form === 'hole';                // いま遊んでいる形の表を先に見せる
+    recRead = data.play === 'read';
     renderSettings(); renderRecords(); renderWorst(); renderVs();
     $('setTitle').textContent = fromWho ? data.name + 'の設定と記録' : '設定と記録';
     $('setClose').textContent = fromWho ? '名前えらびにもどる' : 'ゲームにもどる';
@@ -2403,7 +2591,7 @@ button, summary { font-family: var(--font-body); }
       return;
     }
     clearTimeout(resetArmed); resetArmed = 0; btn.textContent = '記録を消す';
-    data.cells = {}; data.holes = {}; data.seq = {}; data.hc = {}; data.worst = null; selected = null; save(); renderRecords(); renderWorst(); renderSettings();
+    data.cells = {}; data.holes = {}; data.seq = {}; data.hc = {}; data.read = {}; data.worst = null; selected = null; save(); renderRecords(); renderWorst(); renderSettings();
     $('detail').textContent = '記録を消しました。ワースト記録も消えました。';
   });
 
@@ -2420,7 +2608,8 @@ button, summary { font-family: var(--font-body); }
     clearTimeout(stateTimer);
     enemyWrap.getAnimations().forEach(a => a.cancel());
     $('cycle').hidden = true;
-    $('judge').className = 'judge'; $('judge').textContent = HINT;
+    $('judge').className = 'judge';
+    $('judge').textContent = data.play === 'read' ? '声に出してとなえよう。1つ言えたら「言えた！」を押してね。' : HINT;
     renderStats(false); spawnEnemy();
   }
   function startAs(p) {
@@ -2433,6 +2622,11 @@ button, summary { font-family: var(--font-body); }
   }
   // 名前の下に出す、その人の設定のまとめ
   function summary(p) {
+    if (p.play === 'read') {
+      const d = p.dans.filter(n => n <= 9);
+      return ['おんどく', READ_ORDERS.find(o => o[0] === p.readOrder)[1],
+        !d.length || d.length === 9 ? 'ぜんぶの段' : d.join('・') + 'の段', p.lock ? '🔒' : ''].filter(Boolean).join('｜');
+    }
     const N = LEVELS[p.level].nums;
     const dans = p.dans.length === N.length ? 'ぜんぶの段' : p.dans.join('・') + 'の段';
     return [

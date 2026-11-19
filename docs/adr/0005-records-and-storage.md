@@ -31,6 +31,9 @@
   profiles: [{
     id, name,
     adult:     おとなかどうか（→ 0014）,
+    play:      あそびかた 'tap'（こたえを打つ）| 'read'（おんどく）,
+    readOrder: おんどくの順 'up' | 'down' | 'mix',  readHint: 画面に出すもの 'full' | 'expr' | 'none',  readSec: 合格タイム（秒）,
+    read:      おんどくの成績 { となえる順: { 段: { pass, best, n } } }（→ 0015）,
     inbox:     るすの間の知らせ [{ from: おとなの名前, a: 段, level: モード, kind: 'win'|'lose'|'new' }]（見たら消える。→ 0014）,
     hc:        おとなのハンデの進み具合 { おとなのid: { モード番号: { 段: 勝った回数 } } }（こどもの側に持つ。→ 0014）,
     th:        暗記とみなす速さ（ミリ秒、1000〜5000）,
