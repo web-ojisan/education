@@ -135,6 +135,12 @@ button, summary { font-family: var(--font-body); }
   font-size: 18px;
   text-shadow: 2px 2px 0 var(--ink);
 }
+.rival-info { font-size: 13px; font-weight: 700; color: var(--pop); text-shadow: 1.5px 1.5px 0 var(--ink); }
+.rival-info:empty { display: none; }
+.inbox-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.inbox-list li { border: 3px solid var(--ink); border-radius: 10px; padding: 8px 12px; font-weight: 700; line-height: 1.5; background: #fff; }
+.inbox-list li.win { background: var(--pop); }
+.inbox-list li.lose { background: #ffd9d6; }
 
 .enemy-wrap {
   position: absolute;
@@ -500,7 +506,7 @@ button, summary { font-family: var(--font-body); }
   overflow: auto;
 }
 .who[hidden] { display: none; }
-#unlock { z-index: 25; }
+#unlock, #inbox { z-index: 25; }
 #pin, #lockWarn { z-index: 30; }
 .pin-dots { display: flex; justify-content: center; gap: 10px; }
 .pin-dots i { width: 22px; height: 22px; border: 3px solid var(--ink); border-radius: 50%; background: #fff; }
@@ -589,7 +595,8 @@ button, summary { font-family: var(--font-body); }
   <section class="stage" id="stage" aria-label="敵">
     <div class="burst" id="burst"></div>
     <div class="enemy-info">
-      <div class="enemy-name" id="enemyName">ねむけ大王</div>
+      <div class="enemy-name" id="enemyName"></div>
+      <div class="rival-info" id="rivalInfo"></div>
     </div>
 
     <div class="enemy-wrap" id="enemyWrap">
@@ -756,6 +763,14 @@ button, summary { font-family: var(--font-body); }
         </div>
       </details>
     </section>
+  </div>
+</div>
+
+<div class="who" id="inbox" role="dialog" aria-modal="true" aria-labelledby="inboxTitle" hidden>
+  <div class="who-card">
+    <h2 id="inboxTitle">おしらせ</h2>
+    <ul class="inbox-list" id="inboxList"></ul>
+    <button class="btn" id="inboxOk" type="button" style="font-size:18px;padding:12px;background:var(--pop)">OK</button>
   </div>
 </div>
 
@@ -1119,6 +1134,7 @@ button, summary { font-family: var(--font-body); }
     run = data.type === 'seq' && data.form === 'norm' ? { a: queue[0].a, total: 0, miss: 0, fast: true, valid: true } : null;
     runResult = null; flawless = true;
     $('enemyName').textContent = e.name + (data.type === 'seq' ? '（' + queue[0].a + 'の段）' : '');
+    loadRival();                                      // じゅんばんの時は、ぬかすべき相手のタイムを見せる
     $('shirt').setAttribute('fill', e.shirt);
     $('hair').setAttribute('fill', e.hair);
     document.querySelectorAll('.skin').forEach(n => n.setAttribute('fill', e.skin));
@@ -1540,6 +1556,7 @@ button, summary { font-family: var(--font-body); }
       if (run.fast && !r.pass) { r.pass = true; res.pass = true; }
       res.best = r.best;
       res.unlock = winOverAdults(run.a, run.total);     // 勝ったおとなのハンデがへる（へった時は、あとで知らせる）
+      notifyChildren(run.a, run.total);                 // おとなが遊んだ時：こどもに、勝ち負けの知らせを残す
     }
     save(); run = null;
     return res;
@@ -1551,6 +1568,7 @@ button, summary { font-family: var(--font-body); }
     const name = el.innerHTML;
     return res.time < rv.target
       ? `<small class="win">${res.unlock ? 'おめでとう！ ' : ''}${name}に勝った！（${rv.hc ? 'ハンデこみ ' : ''}${sec(Math.max(0, rv.target))}秒）</small>`
+      : data.adult && !rv.p.adult ? `<small>${name}に負けた……（${rv.hc ? 'ハンデこみで ' : ''}あと${sec(res.time - rv.target)}秒）</small>`
       : `<small>${name}まで あと${sec(res.time - rv.target)}秒</small>`;
   }
   /* ---------- おとなのハンデがへった時の知らせ ---------- */
@@ -1762,7 +1780,7 @@ button, summary { font-family: var(--font-body); }
   const RECENT = 3;     // 判定に使う直近の回数
   const TOO_LONG = 30000; // これより長い回答は席を外したとみなして記録しない
   const ALL_DANS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0, lock: null, form: 'norm', holes: {}, seq: {}, adult: false, hc: {} });
+  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0, lock: null, form: 'norm', holes: {}, seq: {}, adult: false, hc: {}, inbox: [] });
   function clean(p) {            // 保存データが壊れていても動くように整える
     if (!p || typeof p !== 'object') return null;
     const out = newProfile(String(p.name || 'プレイヤー').slice(0, 8));
@@ -1778,6 +1796,7 @@ button, summary { font-family: var(--font-body); }
     if (p.seq && typeof p.seq === 'object') out.seq = p.seq;
     out.adult = p.adult === true;
     if (p.hc && typeof p.hc === 'object') out.hc = p.hc;
+    if (Array.isArray(p.inbox)) out.inbox = p.inbox.filter(m => m && typeof m.from === 'string' && Number.isFinite(m.a) && ['win', 'lose', 'new'].includes(m.kind)).slice(-20);
     if (FORMS.some(f => f[0] === p.form)) out.form = p.form;
     if (Number.isInteger(p.worst) && p.worst >= 0) out.worst = p.worst;
     return out;
@@ -2122,7 +2141,7 @@ button, summary { font-family: var(--font-body); }
   $('th').addEventListener('input', e => { data.th = Number(e.target.value) * 1000; save(); renderRecords(); renderSettings(); });
   // ゲームにもどる時：ほかの画面が出ていなければ再開する
   function resume() {
-    paused = ['who', 'settings', 'cycle', 'unlock', 'pin', 'lockWarn', 'rotate'].some(id => !$(id).hidden);
+    paused = ['who', 'settings', 'cycle', 'unlock', 'pin', 'lockWarn', 'rotate', 'inbox'].some(id => !$(id).hidden);
     qValid = false;                               // 止まっていた問題の時間は記録しない
     if (!paused && !locked) recount();            // 問題の途中で止めていた時（演出の途中なら、その流れが自分で数える）
   }
@@ -2221,6 +2240,47 @@ button, summary { font-family: var(--font-body); }
       list.push({ name: p.name, from: Math.max(0, ADULT_HANDICAP - HC_STEP * st), to: Math.max(0, ADULT_HANDICAP - HC_STEP * (st + 1)), crown: st === HC_STEPS });
     });
     return list.length ? list : null;
+  }
+  // おとなが段を全問正解した時、その場でこどものベストとくらべて、こどもに知らせを残す。
+  // 知らせは、そのこどもが次に名前をえらんだ時に出る。ハンデはここではへらない（こどもが自分で勝った時だけへる）
+  function notifyChildren(a, time) {
+    if (!data.adult) return;
+    store.profiles.forEach(c => {
+      if (c.adult) return;
+      const cb = seqBest(c, a);
+      const kind = cb == null ? 'new' : cb < time + hcPerQ(c, data, a) * nums().length ? 'win' : 'lose';
+      c.inbox = (c.inbox || []).filter(m => !(m.from === data.name && m.a === a && m.level === data.level));   // 同じ相手・同じ段は新しい方だけ
+      c.inbox.push({ from: data.name, a, level: data.level, kind });
+    });
+  }
+  function showInbox() {
+    const list = $('inboxList'); list.textContent = '';
+    data.inbox.forEach(m => {
+      const li = document.createElement('li'); li.className = m.kind;
+      const dan = m.a + 'の段' + (m.level ? '（' + LEVELS[m.level].name + '）' : '');
+      li.textContent = m.kind === 'win' ? `${m.from}が ${dan}に 挑戦してきた！　きみの勝ち！`
+        : m.kind === 'lose' ? `${m.from}に ${dan}を ぬかれた！　取りかえそう！`
+        : `${m.from}が ${dan}に 記録を出した！　挑戦しよう！`;
+      list.appendChild(li);
+    });
+    const won = data.inbox.some(m => m.kind === 'win');
+    $('inboxTitle').textContent = won ? 'おめでとう！' : 'おしらせ';
+    if (won) sndFanfare();
+    paused = true;
+    $('inbox').hidden = false;
+    try { $('inboxOk').focus({ preventScroll: true }); } catch (e) {}
+  }
+  $('inboxOk').addEventListener('click', () => {
+    $('inbox').hidden = true;
+    data.inbox = []; save();
+    resume();
+    loadRival();                                      // 知らせを見たあとで、ライバルの表示を最新にする
+  });
+  function loadRival() {
+    const rv = run ? rivalFor(run.a) : null;
+    $('rivalInfo').textContent = !rv ? ''
+      : rv.target > 0 ? `ライバル：${rv.p.name} ${sec(rv.target)}秒` + (rv.hc ? '（ハンデこみ）' : '')
+      : `ライバル：${rv.p.name}（ハンデが大きくて とどかない）`;
   }
   function renderVs() {
     const P = store.profiles, N = nums(), box = $('vs');
@@ -2369,6 +2429,7 @@ button, summary { font-family: var(--font-body); }
     $('who').hidden = true; $('settings').hidden = true;
     $('whoBtn').textContent = p.name + '｜交代';
     restartRun();
+    if (p.inbox && p.inbox.length) showInbox();       // るすの間の知らせがあれば、始まる前に見せる
   }
   // 名前の下に出す、その人の設定のまとめ
   function summary(p) {
