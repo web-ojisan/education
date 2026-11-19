@@ -270,6 +270,8 @@ button, summary { font-family: var(--font-body); }
   -webkit-text-stroke: 7px var(--ink); paint-order: stroke fill;
   font-size: clamp(20px, 6.5vh, 38px); line-height: 1.4;
 }
+.runres small { display: block; font-size: .62em; color: var(--paper); -webkit-text-stroke-width: 5px; white-space: nowrap; }
+.runres small.win { color: #7dffb5; }
 .runres b { display: block; font-weight: 400; color: var(--pop); white-space: nowrap; }
 /* 九九の表：行の左端は段のメダル、右端はじゅんばんのベストタイム */
 .kuku .rh {
@@ -526,6 +528,21 @@ button, summary { font-family: var(--font-body); }
 .who-row .pick small { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .who-row .del { font-size: 12px; padding: 4px 10px; box-shadow: 2px 2px 0 var(--ink); }
 .who-form label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.who-form .adult { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; font-size: 14px; }
+.who-form .adult input { flex: none; width: 22px; height: 22px; padding: 0; accent-color: var(--cobalt); }
+.tag { display: inline-block; font-family: var(--font-body); font-size: 10px; font-weight: 700; line-height: 1; padding: 3px 5px; border: 2px solid var(--ink); border-radius: 999px; background: #fff; vertical-align: middle; white-space: nowrap; }
+/* くらべる：みんなの成績を横に並べる */
+.vs { display: grid; gap: 4px 6px; align-items: center; font-size: 13px; }
+.vs .vh { font-weight: 700; text-align: center; overflow-wrap: anywhere; line-height: 1.3; padding-bottom: 2px; }
+.vs .vh.me { color: var(--cobalt); }
+.vs .vl { font-family: var(--font-display); color: var(--muted); white-space: nowrap; }
+.vs .vl.sub { font-family: var(--font-body); font-weight: 700; font-size: 12px; }
+.vs .vc { text-align: center; padding: 5px 2px; border: 2px solid #d9d6c8; border-radius: 6px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--muted); background: #fff; }
+.vs .vc.top { border-color: var(--ink); background: var(--pop); color: var(--ink); }
+.vs .sep { grid-column: 1 / -1; height: 6px; }
+.vs-head { margin: 0; padding: 8px 12px; border: 3px solid var(--ink); border-radius: 10px; background: #fff; font-weight: 700; line-height: 1.5; }
+.vs-head b { font-family: var(--font-display); font-weight: 400; font-size: 1.15em; }
+@media (max-width: 480px) { .set-tabs .btn { font-size: 13px; padding: 9px 2px; } }
 .who-form .row { display: flex; gap: 8px; }
 .who-form input {
   flex: 1; min-width: 0;
@@ -684,12 +701,24 @@ button, summary { font-family: var(--font-body); }
       <p class="hint" id="recHint"></p>
     </section>
 
+    <!-- くらべる：みんなの成績。ロック中でも見られる -->
+    <section class="records" id="tabVs" hidden>
+      <p class="vs-head" id="vsHead"></p>
+      <div class="vs" id="vs"></div>
+      <p class="hint" id="vsHint"></p>
+    </section>
+
     <!-- おうちの人：たまにしか触らない設定 -->
     <section class="records" id="tabParent" hidden>
       <div class="setting">
         <label for="th">暗記とみなす速さ：<span id="thVal"></span>秒より速い</label>
         <input id="th" type="range" min="1" max="5" step="0.5">
         <p class="hint">この秒数より速く正解すると「暗記」になります。強いパンチになるのも、この速さです。</p>
+      </div>
+      <div class="setting">
+        <h3>この人は</h3>
+        <div class="choice" id="adultPick"></div>
+        <p class="hint">「おとな」にすると、名前の横に印が付きます。「くらべる」で、こどもがおとなに勝っている段が分かります。</p>
       </div>
       <div class="setting">
         <h3>設定のロック</h3>
@@ -762,11 +791,12 @@ button, summary { font-family: var(--font-body); }
     <h2 id="whoTitle">だれが遊ぶ？</h2>
     <div class="who-list" id="whoList"></div>
     <form class="who-form" id="whoForm">
-      <label for="whoName">名前を追加（3人まで）</label>
+      <label for="whoName">名前を追加（5人まで）</label>
       <div class="row">
         <input id="whoName" type="text" maxlength="8" autocomplete="off" placeholder="なまえ">
         <button class="btn" type="submit">追加して開始</button>
       </div>
+      <label class="adult"><input id="whoAdult" type="checkbox">おとな（パパ・ママなど）</label>
     </form>
     <p class="who-note" id="whoNote" aria-live="polite"></p>
   </div>
@@ -1464,7 +1494,7 @@ button, summary { font-family: var(--font-body); }
   // 段を最後まで答えた時に呼ぶ。全問正解ならタイムを残し、全問が暗記の速さなら合格にする
   function finishRun() {
     if (!run) return null;
-    const r = seqRec(run.a), res = { a: run.a, miss: run.miss, time: null, best: r.best, newBest: false, pass: false };
+    const r = seqRec(run.a), res = { a: run.a, miss: run.miss, time: null, best: r.best, newBest: false, pass: false, rival: rivalFor(run.a) };
     r.n++;
     if (!run.miss && run.valid) {
       res.time = run.total;
@@ -1475,12 +1505,21 @@ button, summary { font-family: var(--font-body); }
     save(); run = null;
     return res;
   }
+  // ほかの人のベストとくらべた一言（「パパに勝った！」「ママまで あと0.6秒」）
+  function rivalLine(res) {
+    const rv = res.rival; if (!rv || res.time == null) return '';
+    const el = document.createElement('span'); el.textContent = rv.p.name;          // 名前はそのまま文字として入れる
+    const name = el.innerHTML;
+    return res.time < rv.time
+      ? `<small class="win">${name}に勝った！（${sec(rv.time)}秒）</small>`
+      : `<small>${name}まで あと${sec(res.time - rv.time)}秒</small>`;
+  }
   function showRunResult(res, ms) {
     const el = document.createElement('div');
     el.className = 'runres';
     el.innerHTML = res.time == null
       ? `${res.a}の段<br>${res.miss ? 'まちがい ' + res.miss + '回' : 'タイムなし'}`
-      : `${res.a}の段　${sec(res.time)}秒<b>${res.pass ? 'じゅんばん合格！' : res.newBest ? 'ベストこうしん！' : 'ベスト ' + sec(res.best) + '秒'}</b>`;
+      : `${res.a}の段　${sec(res.time)}秒<b>${res.pass ? 'じゅんばん合格！' : res.newBest ? 'ベストこうしん！' : 'ベスト ' + sec(res.best) + '秒'}</b>` + rivalLine(res);
     fx.appendChild(el);
     el.animate([
       { opacity: 0, transform: 'scale(1.3)' }, { opacity: 1, transform: 'scale(1)', offset: 0.12 },
@@ -1543,7 +1582,7 @@ button, summary { font-family: var(--font-body); }
   const FLY = 850;      // 奥へ飛んでいく時間（ミリ秒）
   const KO_SHOW = 1000; // 「K.O.!」を見せる時間
   const KO_REST = 800;  // そのあと、次の敵が出るまでの一呼吸
-  const KO_RESULT = 1700; // じゅんばんの成績を出す時は、一呼吸のかわりにこの長さだけ見せる
+  const KO_RESULT = 2100; // じゅんばんの成績を出す時は、一呼吸のかわりにこの長さだけ見せる
   function twinkle(pt, silent) {
     if (!silent) ping();
     const el = document.createElement('div');
@@ -1635,12 +1674,12 @@ button, summary { font-family: var(--font-body); }
 
   /* ---------- 記録（localStorage） ---------- */
   const KEY = 'kuku-punch-v2', OLD_KEY = 'kuku-punch-v1';
-  const MAX_PLAYERS = 3;
+  const MAX_PLAYERS = 5;
   const KEEP = 5;       // マスごとに残す回数
   const RECENT = 3;     // 判定に使う直近の回数
   const TOO_LONG = 30000; // これより長い回答は席を外したとみなして記録しない
   const ALL_DANS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0, lock: null, form: 'norm', holes: {}, seq: {} });
+  const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0, lock: null, form: 'norm', holes: {}, seq: {}, adult: false });
   function clean(p) {            // 保存データが壊れていても動くように整える
     if (!p || typeof p !== 'object') return null;
     const out = newProfile(String(p.name || 'プレイヤー').slice(0, 8));
@@ -1654,6 +1693,7 @@ button, summary { font-family: var(--font-body); }
     if (p.cells && typeof p.cells === 'object') out.cells = p.cells;
     if (p.holes && typeof p.holes === 'object') out.holes = p.holes;
     if (p.seq && typeof p.seq === 'object') out.seq = p.seq;
+    out.adult = p.adult === true;
     if (FORMS.some(f => f[0] === p.form)) out.form = p.form;
     if (Number.isInteger(p.worst) && p.worst >= 0) out.worst = p.worst;
     return out;
@@ -1985,6 +2025,11 @@ button, summary { font-family: var(--font-body); }
     });
     $('th').value = data.th / 1000;
     $('thVal').textContent = sec(data.th);
+    const ap = $('adultPick'); ap.textContent = '';
+    [[false, 'こども'], [true, 'おとな']].forEach(([v, label]) => pick(ap, label, data.adult === v, () => {
+      if (data.adult === v) return;
+      data.adult = v; save(); renderSettings(); renderVs();
+    }));
     $('lockBtn').setAttribute('aria-pressed', String(!!data.lock));
     $('lockBtn').textContent = data.lock ? 'ロック：ON（押すと解除）' : 'ロック：OFF';
   }
@@ -2057,8 +2102,62 @@ button, summary { font-family: var(--font-body); }
 
   // 設定と記録の画面を開く。fromWho=true は名前えらびの画面から（その人の設定を、遊ぶ前に見る）
   let setFromWho = false;
+  /* ---------- くらべる（みんなの成績） ---------- */
+  const seqBest = (p, a, level = data.level) => { const r = ((p.seq || {})[level] || {})[a]; return r && r.best != null ? r.best : null; };
+  // じゅんばんのベストタイムで、いま遊んでいる人のライバルになる人（ほかの人のうち、いちばん速い人）
+  function rivalFor(a) {
+    let best = null;
+    store.profiles.forEach(p => { if (p === data) return; const t = seqBest(p, a); if (t != null && (!best || t < best.time)) best = { p, time: t }; });
+    return best;
+  }
+  function renderVs() {
+    const P = store.profiles, N = nums(), box = $('vs');
+    box.textContent = '';
+    box.style.gridTemplateColumns = `auto repeat(${P.length}, minmax(0, 1fr))`;
+    const add = (cls, text) => { const d = document.createElement('div'); d.className = cls; d.textContent = text; box.appendChild(d); return d; };
+    add('vl', '');
+    P.forEach(p => { const h = add('vh' + (p === data ? ' me' : ''), p.name); if (p.adult) { const t = document.createElement('span'); t.className = 'tag'; t.textContent = 'おとな'; h.append(document.createElement('br'), t); } });
+    // 段ごとのベストタイム。いちばん速い人に色を付ける
+    N.forEach(a => {
+      add('vl', a + 'の段');
+      const ts = P.map(p => seqBest(p, a)), top = Math.min(...ts.filter(t => t != null));
+      ts.forEach(t => add('vc' + (t != null && t === top ? ' top' : ''), t != null ? sec(t) : '—'));
+    });
+    add('sep', '');
+    // まとめ：数が多い（ワーストは少ない）人に色を付ける
+    const row = (label, vals, lowWins) => {
+      add('vl sub', label);
+      const have = vals.filter(v => v != null), top = have.length ? (lowWins ? Math.min(...have) : Math.max(...have)) : null;
+      vals.forEach(v => add('vc' + (v != null && v === top && (lowWins || v > 0) ? ' top' : ''), v != null ? String(v) : '—'));
+    };
+    row('じゅんばん合格', P.map(p => N.filter(a => (((p.seq || {})[data.level] || {})[a] || {}).pass).length));
+    row('暗記のマス', P.map(p => { let n = 0; N.forEach(a => N.forEach(b => { if (cellInfo(a, b, p).s === 'memo') n++; })); return n; }));
+    row('なぐられワースト', P.map(p => p.worst), true);
+
+    // 見出し：こどもなら「おとなに勝っている段」、おとななら「こどもに負けている段」
+    const others = P.filter(p => p !== data && p.adult !== data.adult);
+    const head = $('vsHead');
+    if (P.length < 2) head.textContent = 'ほかの人の名前を追加すると、ここで成績をくらべられます。';
+    else if (!others.length) head.textContent = data.adult ? 'こどもの名前を追加すると、勝ち負けがここに出ます。' : 'おとなの名前を追加すると、おとなとの勝ち負けがここに出ます。';
+    else {
+      let win = 0, played = 0;
+      N.forEach(a => {
+        const mine = seqBest(data, a), theirs = others.map(p => seqBest(p, a)).filter(t => t != null);
+        if (mine == null || !theirs.length) return;
+        played++;
+        if (data.adult ? mine > Math.min(...theirs) : mine < Math.min(...theirs)) win++;
+      });
+      head.innerHTML = data.adult
+        ? `こどもに負けている段：<b>${win}</b> / ${played}`
+        : `おとなに勝っている段：<b>${win}</b> / ${played}` + (played && win === played ? '　ぜんぶ勝ち！' : '');
+    }
+    $('vsHint').textContent = '上の数字は、じゅんばんタイプでその段を全問正解したときのベストタイム（秒）です。黄色がいちばん速い人。'
+      + (data.level ? `いまは「${LEVELS[data.level].name}」の成績をくらべています。` : '');
+  }
+
   // タブ：あそびかた／きろく／おうちの人。ロック中は「きろく」だけパスワードなしで見られる
-  const SET_TABS = [['play', 'あそびかた', 'tabPlay'], ['rec', 'きろく', 'tabRec'], ['parent', 'おうちの人', 'tabParent']];
+  const SET_TABS = [['play', 'あそびかた', 'tabPlay'], ['rec', 'きろく', 'tabRec'], ['vs', 'くらべる', 'tabVs'], ['parent', 'おうちの人', 'tabParent']];
+  const FREE_TABS = ['rec', 'vs'];       // ロック中でもパスワードなしで見られるタブ
   let setTab = 'play', pinOk = false;    // pinOk：この画面を開いている間に、パスワードを一度通したか
   function showTab(name) {
     setTab = name;
@@ -2067,7 +2166,7 @@ button, summary { font-family: var(--font-body); }
     SET_TABS.forEach(([k, label]) => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'btn';
-      b.textContent = (data.lock && !pinOk && k !== 'rec' ? '🔒 ' : '') + label;
+      b.textContent = (data.lock && !pinOk && !FREE_TABS.includes(k) ? '🔒 ' : '') + label;
       b.setAttribute('aria-pressed', String(k === name));
       b.addEventListener('click', () => pickTab(k));
       bar.appendChild(b);
@@ -2076,7 +2175,7 @@ button, summary { font-family: var(--font-body); }
   }
   async function pickTab(name) {
     if (name === setTab || pinResolve) return;
-    if (data.lock && !pinOk && name !== 'rec') {
+    if (data.lock && !pinOk && !FREE_TABS.includes(name)) {
       let note = '';
       for (;;) {
         const v = await askPin('パスワードを入力', '設定はロックされています。6桁の数字を入れてください。', note);
@@ -2094,7 +2193,7 @@ button, summary { font-family: var(--font-body); }
     setFromWho = !!fromWho;
     dirty = false; selected = null; selRow = null; pinOk = false;
     recHole = data.form === 'hole';                // いま遊んでいる形の表を先に見せる
-    renderSettings(); renderRecords(); renderWorst();
+    renderSettings(); renderRecords(); renderWorst(); renderVs();
     $('setTitle').textContent = fromWho ? data.name + 'の設定と記録' : '設定と記録';
     $('setClose').textContent = fromWho ? '名前えらびにもどる' : 'ゲームにもどる';
     $('who').hidden = true;
@@ -2168,6 +2267,7 @@ button, summary { font-family: var(--font-body); }
       const name = document.createElement('span'); name.textContent = p.name;
       const sum = document.createElement('span'); sum.className = 'sum'; sum.textContent = summary(p);
       nm.append(name, sum);
+      if (p.adult) { const t = document.createElement('span'); t.className = 'tag'; t.textContent = 'おとな'; name.append(' ', t); }
       const info = document.createElement('small'); info.textContent = '暗記 ' + memoCount(p) + '/81';
       pick.append(nm, info);
       pick.addEventListener('click', () => startAs(p));
@@ -2207,7 +2307,8 @@ button, summary { font-family: var(--font-body); }
     if (store.profiles.some(p => p.name === name)) { $('whoNote').textContent = '同じ名前がもうあります。'; return; }
     if (store.profiles.length >= MAX_PLAYERS) return;
     const p = newProfile(name);
-    store.profiles.push(p); $('whoName').value = '';
+    p.adult = $('whoAdult').checked;
+    store.profiles.push(p); $('whoName').value = ''; $('whoAdult').checked = false;
     startAs(p);
   });
   $('whoBtn').addEventListener('click', openWho);

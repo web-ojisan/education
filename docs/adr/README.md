@@ -18,3 +18,4 @@
 | [0011](0011-who-screen-settings-and-rotate-notice.md) | 名前えらびからの設定確認と、たて持ちのお知らせ | 採用 |
 | [0012](0012-group-enemies.md) | 集団の敵（正解のたびに3体たおす） | 採用 |
 | [0013](0013-settings-tabs-and-medals.md) | 設定画面を3つのタブに分け、記録の表にメダルを付ける | 採用 |
+| [0014](0014-adult-flag-and-compare.md) | 「おとな」の印と、くらべる画面 | 採用 |
