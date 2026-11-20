@@ -142,6 +142,7 @@ button, summary { font-family: var(--font-body); }
 #readOk { font-size: clamp(22px, 7vh, 34px); padding: 10px 0; background: var(--pop); }
 #readNg { font-size: 13px; font-family: var(--font-body); font-weight: 700; }
 .readbar .btn.down { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+.question .again { display: block; font-family: var(--font-body); font-weight: 700; font-size: 13px; line-height: 1.2; color: var(--hit); letter-spacing: .08em; }
 .question .yomi { display: block; font-family: var(--font-body); font-weight: 700; font-size: .38em; line-height: 1.3; color: var(--muted); letter-spacing: .06em; }
 .question .dots { letter-spacing: .12em; color: #b9bbcc; }
 .question .dots b { color: var(--ink); font-weight: 400; }
@@ -2082,14 +2083,15 @@ button, summary { font-family: var(--font-body); }
     if (q.read) {                               // おんどく：設定に合わせて、式・よみがな・何番目かを出す
       const h = data.readHint, at = qi, n = queue.length;
       const dots = `<span class="dots">${'<b>●</b>'.repeat(at)}${'○'.repeat(n - at)}</span>`;
-      $('question').innerHTML = h === 'none' ? dots
-        : `${q.a} × ${q.b}` + (h === 'full' ? `<span class="yomi">${YOMI[q.a][q.b - 1][0]}…</span>` : '');
+      const again = q.retry ? '<span class="again">もういちど！</span>' : '';
+      $('question').innerHTML = again + (h === 'none' && !q.retry ? dots     // もう一度の時は、どの式か分かるように式を出す
+        : `${q.a} × ${q.b}` + (h === 'full' ? `<span class="yomi">${YOMI[q.a][q.b - 1][0]}…</span>` : ''));
       return;
     }
     const slot = `<span class="typed">${typed}</span>` + (reveal ? '' : '<span class="caret">?</span>');
-    $('question').innerHTML = q.hole
+    $('question').innerHTML = (q.retry && !reveal ? '<span class="again">もういちど！</span>' : '') + (q.hole
       ? `${q.a} × <span class="box">${slot}</span> = ${q.a * q.b}`
-      : `${q.a} × ${q.b} = ${slot}`;
+      : `${q.a} × ${q.b} = ${slot}`);
   }
   function judge(cls, head, text) {
     const j = $('judge'); j.className = 'judge ' + cls;
@@ -2111,6 +2113,7 @@ button, summary { font-family: var(--font-body); }
     const said = `${yomi(q.a, q.b)}（${q.a}×${q.b}=${q.a * q.b}）`;
     if (!ok) {
       readRun.miss++; flawless = false;
+      askAgain();
       combo = 0; punched++; renderStats(false); blip(); punchPlayer();
       judge('miss', 'ただしくは', said);
       locked = true;
@@ -2131,6 +2134,8 @@ button, summary { font-family: var(--font-body); }
     b.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button !== 0) return; e.preventDefault(); flashKey(b); handleRead(ok); });
     b.addEventListener('click', e => { if (e.detail === 0) handleRead(ok); });
   });
+  // まちがえた問題は、その敵の最後にもう一度出す（1回だけ）。正解し直せば、自分の手でたおせる
+  function askAgain() { if (!q.retry) queue.push(Object.assign({}, q, { retry: true })); }
   function handleDigit(d) {
     if (locked || paused || q.read || performance.now() < qGuard) return;
     ac();
@@ -2139,6 +2144,7 @@ button, summary { font-family: var(--font-body); }
     const counted = qValid && ms < TOO_LONG;
     if (!ans.startsWith(typed + d)) {            // まちがい：殴られて、答えを見せてから次の問題へ
       flawless = false;
+      askAgain();
       if (run) { run.miss++; }
       else if (counted) record(q.a, q.b, ms, false, q.hole);
       const hasty = ms < data.th;                // 速く答えてまちがえた
