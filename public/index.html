@@ -717,6 +717,11 @@ button, summary { font-family: var(--font-body); }
           <button class="btn" id="dansNone" type="button">ぜんぶはずす</button>
         </div>
       </div>
+      <div class="setting">
+        <h3>1サイクルの長さ</h3>
+        <div class="choice" id="lens"></div>
+        <p class="hint" id="lenHint"></p>
+      </div>
       <div id="tapSettings">
       <div class="setting">
         <h3 class="step"><i>2</i>どの順で</h3>
@@ -942,6 +947,12 @@ button, summary { font-family: var(--font-body); }
     ['tap',  'こたえを打つ', '数字のボタンで答えを打って、敵をたおします。'],
     ['read', 'おんどく',     '声に出して九九をとなえる、暗唱テストの練習です。1つ言うたびに「言えた！」を押します。押すと正しい読み方が出るので、合っていたか自分やおうちの人がたしかめます。'],
   ];
+  // 1サイクルの長さ：えらんだ段の数に対して、何人の敵と戦うか
+  const LENS = [
+    ['full',  'ぜんぶ',   'えらんだ段をぜんぶ回ります。なぐられた回数のワーストは、この長さの時だけ記録します。'],
+    ['half',  'はんぶん', 'えらんだ段の半分の数だけ戦います。つづきは次のサイクルで出ます。'],
+    ['short', 'みじかめ', '敵3人だけ戦います。つづきは次のサイクルで出ます。'],
+  ];
   const READ_ORDERS = [
     ['up',   '上がり',   '×1 から ×9 へ、順番にとなえます。'],
     ['down', '下がり',   '×9 から ×1 へ、逆からとなえます。'],
@@ -958,6 +969,7 @@ button, summary { font-family: var(--font-body); }
   let enemyIdx = 0;
   let combo = 0, kos = 0, locked = false, dir = 1;
   let stateTimer = 0;
+  let weakPlan = [];                   // 弱点タイプで、このサイクルに出す問題の山
   let queue = [], qi = 0, bag = [];   // いまの敵が出す問題と、その何問目か
   let readRun = null;                  // おんどくで1つの段をとなえている間の成績
   let run = null, runResult = null;   // じゅんばんで1つの段を通している間の成績と、その結果
@@ -1202,7 +1214,7 @@ button, summary { font-family: var(--font-body); }
     if (bump && combo > 1) c.animate([{ transform: 'scale(1.5)' }, { transform: 'scale(1)' }], { duration: 140 });
   }
   function loadEnemy() {
-    const e = ENEMIES[enemyIdx % ENEMIES.length];
+    const e = ENEMIES[enemyNo() % ENEMIES.length];
     queue = buildQueue(); qi = 0;
     // じゅんばん（ふつうの形）は答えが予想できるので、九九の表には記録せず、段ごとの成績として数える
     run = data.play !== 'read' && data.type === 'seq' && data.form === 'norm' ? { a: queue[0].a, total: 0, miss: 0, fast: true, valid: true } : null;
@@ -1447,7 +1459,7 @@ button, summary { font-family: var(--font-body); }
   }
   let punchTimer = 0;
   function punchPlayer(counter) {
-    const skin = ENEMIES[enemyIdx % ENEMIES.length].skin;
+    const skin = ENEMIES[enemyNo() % ENEMIES.length].skin;
     if (groupMode && mobs.length) {                  // 集団：ねらっている1体が、攻撃の絵で手前に迫ってくる
       const m = targetMob(), g = gen;
       const z = REDUCED ? 1.3 : Math.max(1.6, Math.min(4, stage.getBoundingClientRect().height * 1.25 / m.el.getBoundingClientRect().height));
@@ -1499,7 +1511,7 @@ button, summary { font-family: var(--font-body); }
     punchImpact(counter);
   }
   function punchImpact(counter) {
-    const e = ENEMIES[enemyIdx % ENEMIES.length];
+    const e = ENEMIES[enemyNo() % ENEMIES.length];
     const word = e.atkWords ? e.atkWords[Math.floor(Math.random() * e.atkWords.length)] : null;
     setTimeout(() => {                               // 当たった瞬間
       const r = stage.getBoundingClientRect();
@@ -1538,16 +1550,17 @@ button, summary { font-family: var(--font-body); }
   /* ---------- 1サイクル（有効にした段の数だけ敵と戦う）の結果 ---------- */
   function renderWorst() {
     $('worstLine').textContent = data.worst == null
-      ? '1サイクル（有効にした段をひとまわり）でなぐられた回数のワースト：まだ記録なし'
-      : '1サイクルでなぐられた回数のワースト：' + data.worst + '回';
+      ? '1サイクル（長さ「ぜんぶ」）でなぐられた回数のワースト：まだ記録なし'
+      : '1サイクル（長さ「ぜんぶ」）でなぐられた回数のワースト：' + data.worst + '回';
   }
   function showCycle() {
-    const before = data.worst, n = punched;
-    const isWorst = before != null && n > before;
-    if (before == null || n > before) { data.worst = n; save(); }
+    const before = data.worst, n = punched, full = data.len === 'full';   // ワーストは「ぜんぶ」の長さの時だけ記録する
+    const isWorst = full && before != null && n > before;
+    if (full && (before == null || n > before)) { data.worst = n; save(); }
     $('cycleHits').textContent = n;
-    $('cycleWorst').textContent = data.worst;
+    $('cycleWorst').textContent = data.worst == null ? '—' : data.worst;
     $('cycleMsg').textContent = n === 0 ? '1回もなぐられなかった！かんぺき！'
+      : !full ? 'ワーストは「ぜんぶ」の長さで遊んだ時に記録します。'
       : before == null ? 'はじめての記録です。'
       : isWorst ? 'ワースト記録をこうしん…（前は' + before + '回）'
       : 'ワースト（' + before + '回）より' + (before - n) + '回すくない！';
@@ -1605,6 +1618,7 @@ button, summary { font-family: var(--font-body); }
   function afterEnemy() {
     enemyWrap.getAnimations().forEach(a => a.cancel());
     enemyIdx++;
+    if (inOrder()) { data.pos++; save(); }          // 次の段へ（保存して、次に遊ぶ時も続きから）
     if (enemyIdx % cycleLen() === 0) showCycle();   // ひとまわりしたら結果を見せる
     else spawnEnemy();
   }
@@ -1878,7 +1892,7 @@ button, summary { font-family: var(--font-body); }
   const TOO_LONG = 30000; // これより長い回答は席を外したとみなして記録しない
   const ALL_DANS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
   const newProfile = name => ({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, th: 2000, dans: ALL_DANS.slice(), cells: {}, worst: null, type: 'seq', level: 0, unlocked: 0, lock: null, form: 'norm', holes: {}, seq: {}, adult: false, hc: {}, inbox: [],
-    play: 'tap', readOrder: 'up', readHint: 'full', readSec: 20, read: {} });
+    play: 'tap', readOrder: 'up', readHint: 'full', readSec: 20, read: {}, len: 'full', pos: 0 });
   function clean(p) {            // 保存データが壊れていても動くように整える
     if (!p || typeof p !== 'object') return null;
     const out = newProfile(String(p.name || 'プレイヤー').slice(0, 8));
@@ -1894,6 +1908,8 @@ button, summary { font-family: var(--font-body); }
     if (p.seq && typeof p.seq === 'object') out.seq = p.seq;
     out.adult = p.adult === true;
     if (p.play === 'read') out.play = 'read';
+    if (LENS.some(l => l[0] === p.len)) out.len = p.len;
+    if (Number.isInteger(p.pos) && p.pos >= 0) out.pos = p.pos;
     if (READ_ORDERS.some(o => o[0] === p.readOrder)) out.readOrder = p.readOrder;
     if (READ_HINTS.some(h => h[0] === p.readHint)) out.readHint = p.readHint;
     if (p.readSec >= 8 && p.readSec <= 40) out.readSec = Math.round(p.readSec);
@@ -2035,10 +2051,16 @@ button, summary { font-family: var(--font-body); }
   // 敵ひとりぶんの問題を作る。数は「かける数」の個数（ふつう9／上級者14／地獄18）
   // おんどくで使う段：1〜9だけ
   const readDans = () => { const d = data.dans.filter(n => n <= 9).sort((x, y) => x - y); return d.length ? d : R(1, 9); };
-  const cycleLen = () => data.play === 'read' ? readDans().length : data.dans.length;   // 1サイクルの敵の数
+  // 段を順に回るあそびかた（じゅんばん・おんどく）か。この時は「次はどの段か」を data.pos におぼえておく（日をまたいでも続きから）
+  const inOrder = () => data.play === 'read' || data.type === 'seq';
+  const enemyNo = () => inOrder() ? data.pos : enemyIdx;           // 何番目の敵か（絵をえらぶのに使う）
+  const cycleLen = () => {                                         // 1サイクルの敵の数
+    const n = data.play === 'read' ? readDans().length : data.dans.length;
+    return data.len === 'half' ? Math.ceil(n / 2) : data.len === 'short' ? Math.min(3, n) : n;
+  };
   function buildQueue() {
     if (data.play === 'read') {                 // おんどく：1つの段を、えらんだ順でとなえる
-      const d = readDans(), a = d[enemyIdx % d.length];
+      const d = readDans(), a = d[data.pos % d.length];
       const bs = data.readOrder === 'down' ? R(1, 9).reverse() : R(1, 9);
       if (data.readOrder === 'mix') for (let i = bs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [bs[i], bs[j]] = [bs[j], bs[i]]; }
       return bs.map(b => ({ a, b, read: true }));
@@ -2047,7 +2069,7 @@ button, summary { font-family: var(--font-body); }
     const isHole = () => data.form === 'hole' || (data.form === 'mix' && Math.random() < 0.5);
     const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
     if (data.type === 'seq') {
-      const a = dans[enemyIdx % dans.length];
+      const a = dans[data.pos % dans.length];
       const out = N.map(b => ({ a, b, hole: isHole() }));
       // 穴あきをかける数の順に出すと答えが 1,2,3… と並んでしまうので、段の中はまぜる
       return data.form === 'norm' ? out : shuffle(out);
@@ -2060,15 +2082,17 @@ button, summary { font-family: var(--font-body); }
       }
       return bag.splice(0, N.length);
     }
-    const pool = [], out = [];                  // 弱点：にがてなマスほど選ばれやすい（同じ敵の中では重ならない）
-    dans.forEach(a => N.forEach(b => { const hole = isHole(); pool.push({ a, b, hole, w: WEIGHT[cellInfo(a, b, data, hole).s] }); }));
-    while (out.length < N.length && pool.length) {
-      let r = Math.random() * pool.reduce((t, p) => t + p.w, 0);
-      let i = pool.findIndex(p => (r -= p.w) < 0);
-      if (i < 0) i = pool.length - 1;
-      out.push(pool.splice(i, 1)[0]);
+    // 弱点：サイクルの最初に、そのサイクルで出す問題をまとめて決める。
+    // 「まちがえた」→「考えてる」（おそい順）を必ず先に入れ、残りの枠をほかの問題からまぜて埋める
+    if (weakPlan.length < N.length) {
+      const all = [];
+      dans.forEach(a => N.forEach(b => { const hole = isHole(), i = cellInfo(a, b, data, hole); all.push({ a, b, hole, s: i.s, avg: i.avg }); }));
+      const need = Math.min(all.length, cycleLen() * N.length);
+      const weak = all.filter(x => x.s === 'miss').concat(all.filter(x => x.s === 'think').sort((x, y) => y.avg - x.avg));
+      const rest = shuffle(all.filter(x => x.s !== 'miss' && x.s !== 'think'));
+      weakPlan = shuffle(weak.concat(rest).slice(0, need)).map(({ a, b, hole }) => ({ a, b, hole }));
     }
-    return out;
+    return weakPlan.splice(0, N.length);
   }
   const TAP_GUARD = 180;   // 問題が出た直後は入力を受けない時間（前の問題の押しすぎが、次の問題のまちがいになるのを防ぐ）
   let qGuard = 0;
@@ -2252,7 +2276,13 @@ button, summary { font-family: var(--font-body); }
     const reading = data.play === 'read';
     $('playSum').innerHTML = `いまの設定：${summary(data)}<br>→ ` + (reading
       ? `<b>敵${cycleLen()}人</b>（1人につき1つの段をとなえる）で1サイクル`
-      : `<b>敵${data.dans.length}人・${data.dans.length * nums().length}問</b>で1サイクル`);
+      : `<b>敵${cycleLen()}人・${cycleLen() * nums().length}問</b>で1サイクル`);
+    const lens = $('lens'); lens.textContent = '';
+    LENS.forEach(([k, label]) => pick(lens, label, data.len === k, () => {
+      if (data.len === k) return;
+      data.len = k; dirty = true; save(); renderSettings();
+    }));
+    $('lenHint').textContent = LENS.find(x => x[0] === data.len)[2];
     const plays = $('plays'); plays.textContent = '';
     PLAYS.forEach(([k, label]) => pick(plays, label, data.play === k, () => {
       if (data.play === k) return;
@@ -2585,7 +2615,7 @@ button, summary { font-family: var(--font-body); }
   $('setClose').addEventListener('click', () => {
     $('settings').hidden = true;
     if (setFromWho) { openWho(); return; }        // 遊ぶ人をえらぶと、最初の敵から始まる
-    if (dirty) { paused = false; restartRun(); } else resume();
+    if (dirty) { paused = false; data.pos = 0; save(); restartRun(); } else resume();   // 出題の設定を変えたら、最初の段から
     checkUnlock();                                // 「暗記とみなす速さ」を変えて条件を満たした場合
   });
   let resetArmed = 0;
@@ -2610,7 +2640,7 @@ button, summary { font-family: var(--font-body); }
   }
   // 最初の敵からやり直す（遊ぶ人をえらんだ時、出題の設定を変えた時）
   function restartRun() {
-    gen++; locked = false; combo = 0; kos = 0; enemyIdx = 0; punched = 0; perfects = 0; bag = [];
+    gen++; locked = false; combo = 0; kos = 0; enemyIdx = 0; punched = 0; perfects = 0; bag = []; weakPlan = [];
     clearTimeout(stateTimer);
     enemyWrap.getAnimations().forEach(a => a.cancel());
     $('cycle').hidden = true;
@@ -2631,7 +2661,8 @@ button, summary { font-family: var(--font-body); }
     if (p.play === 'read') {
       const d = p.dans.filter(n => n <= 9);
       return ['おんどく', READ_ORDERS.find(o => o[0] === p.readOrder)[1],
-        !d.length || d.length === 9 ? 'ぜんぶの段' : d.join('・') + 'の段', p.lock ? '🔒' : ''].filter(Boolean).join('｜');
+        !d.length || d.length === 9 ? 'ぜんぶの段' : d.join('・') + 'の段',
+        p.len === 'full' ? '' : LENS.find(l => l[0] === p.len)[1], p.lock ? '🔒' : ''].filter(Boolean).join('｜');
     }
     const N = LEVELS[p.level].nums;
     const dans = p.dans.length === N.length ? 'ぜんぶの段' : p.dans.join('・') + 'の段';
@@ -2640,6 +2671,7 @@ button, summary { font-family: var(--font-body); }
       p.form === 'norm' ? '' : FORMS.find(f => f[0] === p.form)[1],
       p.level ? LEVELS[p.level].name : '',
       dans,
+      p.len === 'full' ? '' : LENS.find(l => l[0] === p.len)[1],
       p.lock ? '🔒' : '',
     ].filter(Boolean).join('｜');
   }

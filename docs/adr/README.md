@@ -20,3 +20,4 @@
 | [0013](0013-settings-tabs-and-medals.md) | 設定画面を3つのタブに分け、記録の表にメダルを付ける | 採用 |
 | [0014](0014-adult-flag-and-compare.md) | 「おとな」の印と、くらべる画面 | 採用 |
 | [0015](0015-recitation-mode.md) | おんどく（暗唱テストの練習） | 採用 |
+| [0016](0016-cycle-length.md) | 1サイクルの長さ | 採用 |

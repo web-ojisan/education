@@ -31,6 +31,7 @@
   profiles: [{
     id, name,
     adult:     おとなかどうか（→ 0014）,
+    len:       1サイクルの長さ 'full' | 'half' | 'short',  pos: じゅんばん・おんどくで次に出す段の位置（→ 0016）,
     play:      あそびかた 'tap'（こたえを打つ）| 'read'（おんどく）,
     readOrder: おんどくの順 'up' | 'down' | 'mix',  readHint: 画面に出すもの 'full' | 'expr' | 'none',  readSec: 合格タイム（秒）,
     read:      おんどくの成績 { となえる順: { 段: { pass, best, n } } }（→ 0015）,
